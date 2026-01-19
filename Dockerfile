@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     xvfb \
     fluxbox \
+    x11-xserver-utils \
     # Audio dependencies
     pulseaudio \
     pulseaudio-utils \

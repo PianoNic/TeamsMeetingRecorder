@@ -20,16 +20,12 @@ class JoinMeetingRequest(BaseModel):
     """Request model for joining a Teams meeting."""
     meeting_url: str = Field(..., description="Microsoft Teams meeting URL")
     display_name: str = Field(..., description="Display name to use in the meeting", max_length=100)
-    record_audio: bool = Field(default=True, description="Whether to record audio")
-    max_duration_minutes: Optional[int] = Field(default=None, description="Maximum recording duration in minutes", ge=1, le=480)
 
     class Config:
         json_schema_extra = {
             "example": {
                 "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
-                "display_name": "Recording Bot",
-                "record_audio": True,
-                "max_duration_minutes": 60
+                "display_name": "Recording Bot"
             }
         }
 
