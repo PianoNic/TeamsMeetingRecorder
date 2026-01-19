@@ -1,0 +1,13 @@
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+selenium==4.17.2
+python-dotenv==1.0.0
+aiofiles==23.2.1
+psutil==5.9.8
+sounddevice==0.4.6
+soundfile==0.12.1
+numpy==1.26.3
+pyvirtualdisplay==3.0
+webdriver-manager==4.0.1
