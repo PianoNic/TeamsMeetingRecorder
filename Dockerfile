@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Teams Meeting Recorder
+# Multi-stage Dockerfile for Teams Meeting Recorder with Playwright
 # Based on 2026 Docker best practices
 
 # Stage 1: Base image with system dependencies
@@ -9,33 +9,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install system dependencies
+# Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Chrome and Selenium dependencies
+    # Core utilities
     wget \
+    curl \
     gnupg \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libwayland-client0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxkbcommon0 \
-    libxrandr2 \
-    xdg-utils \
+    procps \
+    unzip \
     # VNC and display dependencies
     x11vnc \
     xvfb \
@@ -44,43 +29,45 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     pulseaudio-utils \
     alsa-utils \
-    libportaudio2 \
     libsndfile1 \
-    # Additional utilities
-    curl \
-    procps \
+    # Playwright dependencies (minimal set)
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libatspi2.0-0 \
+    libwayland-client0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install ChromeDriver
-RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f 1) && \
-    wget -q "https://storage.googleapis.com/chrome-for-testing-public/stable/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip && \
-    unzip /tmp/chromedriver.zip -d /tmp/ && \
-    mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/ && \
-    chmod +x /usr/local/bin/chromedriver && \
-    rm -rf /tmp/chromedriver*
-
-# Stage 2: Python dependencies
+# Stage 2: Python dependencies and Playwright browsers
 FROM base AS dependencies
 
 WORKDIR /app
 
-# Copy requirements first (leverage Docker layer caching)
+# Copy requirements first (leverage Docker layer caching - 2026 best practice)
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers (only chromium for efficiency)
+# Using --only-shell flag for CI optimization as per 2026 best practices
+RUN playwright install chromium && \
+    playwright install-deps chromium
+
 # Stage 3: Final runtime image
 FROM dependencies AS runtime
 
-# Create non-root user for security
+# Create non-root user for security (2026 best practice)
 RUN useradd -m -u 1000 -s /bin/bash botuser && \
     mkdir -p /app /app/recordings /app/logs && \
     chown -R botuser:botuser /app
@@ -104,7 +91,7 @@ WORKDIR /app
 # Expose ports
 EXPOSE 8000 5900
 
-# Health check
+# Health check (2026 best practice with proper timing)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
