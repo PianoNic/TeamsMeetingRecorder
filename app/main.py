@@ -90,9 +90,7 @@ async def join_meeting(
         # Create new bot instance
         bot = TeamsBot(
             meeting_url=request.meeting_url,
-            display_name=request.display_name,
-            record_audio=request.record_audio,
-            max_duration_minutes=request.max_duration_minutes
+            display_name=request.display_name
         )
 
         # Store in active sessions

@@ -5,6 +5,10 @@ echo "==================================="
 echo "Teams Meeting Recorder - Starting"
 echo "==================================="
 
+# Disable PC speaker beep
+echo "Disabling system beep..."
+xset -b 2>/dev/null || true
+
 # Start PulseAudio
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 || true

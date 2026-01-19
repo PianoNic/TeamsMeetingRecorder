@@ -4,6 +4,7 @@ import time
 import logging
 import uuid
 import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -22,9 +23,7 @@ class TeamsBot:
     def __init__(
         self,
         meeting_url: str,
-        display_name: str,
-        record_audio: bool = True,
-        max_duration_minutes: Optional[int] = None
+        display_name: str
     ):
         """
         Initialize the Teams bot.
@@ -32,14 +31,10 @@ class TeamsBot:
         Args:
             meeting_url: Microsoft Teams meeting URL
             display_name: Display name to use in the meeting
-            record_audio: Whether to record audio
-            max_duration_minutes: Maximum recording duration in minutes
         """
         self.session_id = str(uuid.uuid4())
         self.meeting_url = meeting_url
         self.display_name = display_name
-        self.record_audio = record_audio
-        self.max_duration_minutes = max_duration_minutes
 
         self.status = BotStatus.IDLE
         self.started_at: Optional[datetime] = None
@@ -52,6 +47,7 @@ class TeamsBot:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.audio_recorder: Optional[AudioRecorder] = None
+        self.chromium_process: Optional[subprocess.Popen] = None
 
         logger.info(f"Initialized bot with session ID: {self.session_id}")
 
@@ -68,40 +64,40 @@ class TeamsBot:
             # Launch Playwright
             self.playwright = sync_playwright().start()
 
-            # Browser launch arguments (2026 best practices)
+            # Browser launch arguments for visible window
             launch_args = [
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
                 f"--window-size={settings.display_width},{settings.display_height}",
-                # Allow media access
+                # Allow media access but keep muted
                 "--use-fake-ui-for-media-stream",
                 "--use-fake-device-for-media-stream",
+                "--autoplay-policy=no-user-gesture-required",
+                # Mute audio output to prevent beeping
+                "--mute-audio",
                 # Use virtual audio device
                 f"--alsa-output-device={settings.pulseaudio_sink_name}",
                 # Additional stability
                 "--disable-blink-features=AutomationControlled",
+                "--disable-features=AudioServiceOutOfProcess",
             ]
 
-            # Launch browser (headless=False to display on Xvfb)
+            # Launch browser with headless=False for visible window
+            logger.info("Launching browser with headless=False")
             self.browser = self.playwright.chromium.launch(
-                headless=settings.browser_headless,
+                headless=False,
                 args=launch_args
             )
 
-            # Create browser context with permissions (Playwright's efficient context model)
+            # Create browser context
             self.context = self.browser.new_context(
                 viewport={
                     "width": settings.display_width,
                     "height": settings.display_height
                 },
-                # Grant media permissions
                 permissions=["microphone", "camera"],
-                # Additional context options
                 ignore_https_errors=True,
                 java_script_enabled=True,
-                # Set user agent to avoid detection
                 user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
 
@@ -158,25 +154,41 @@ class TeamsBot:
             try:
                 logger.info("Turning off camera and microphone")
 
-                # Find and click camera toggle
-                camera_button = self.page.locator("button[data-tid='toggle-video'], button[aria-label*='camera' i]").first
+                # Find and click camera toggle - turn OFF if currently ON
+                # Based on proven working implementations - use nested selector for button
+                camera_button = self.page.locator("toggle-button[data-tid='toggle-video'] > div > button").first
                 if camera_button.is_visible(timeout=5000):
                     aria_pressed = camera_button.get_attribute("aria-pressed")
-                    if aria_pressed and ("on" in aria_pressed.lower() or "true" in aria_pressed.lower()):
+                    logger.info(f"Camera button aria-pressed: {aria_pressed}")
+                    # If aria-pressed="true", camera is ON, so click to turn it OFF
+                    if aria_pressed and aria_pressed.lower() == "true":
                         camera_button.click()
+                        logger.info("Turned camera OFF")
                         self.page.wait_for_timeout(500)
+                    else:
+                        logger.info("Camera is already OFF")
+                else:
+                    logger.warning("Camera button not found")
 
-                # Find and click microphone toggle
-                mic_button = self.page.locator("button[data-tid='toggle-mute'], button[aria-label*='microphone' i], button[aria-label*='mute' i]").first
+                # Find and click microphone toggle - MUTE if currently UNMUTED
+                # Based on proven working implementations
+                mic_button = self.page.locator("toggle-button[data-tid='toggle-mute'] > div > button").first
                 if mic_button.is_visible(timeout=5000):
                     aria_pressed = mic_button.get_attribute("aria-pressed")
-                    if aria_pressed and ("on" in aria_pressed.lower() or "false" in aria_pressed.lower()):
+                    logger.info(f"Microphone button aria-pressed: {aria_pressed}")
+                    # If aria-pressed="true", microphone is ON (unmuted), so click to mute it
+                    if aria_pressed and aria_pressed.lower() == "true":
                         mic_button.click()
+                        logger.info("Muted microphone")
                         self.page.wait_for_timeout(500)
+                    else:
+                        logger.info("Microphone is already muted")
+                else:
+                    logger.warning("Microphone button not found")
 
-                logger.info("Camera and microphone turned off")
-            except Exception:
-                logger.warning("Could not find camera/mic toggle buttons")
+                logger.info("Camera and microphone processing complete")
+            except Exception as e:
+                logger.warning(f"Could not find camera/mic toggle buttons: {e}")
 
             # Click Join button
             try:
@@ -205,112 +217,146 @@ class TeamsBot:
                 self.status = BotStatus.RECORDING  # Still set to recording, as we might be in lobby
 
         except Exception as e:
-            logger.error(f"Error joining meeting: {e}", exc_info=True)
-            self.status = BotStatus.ERROR
-            self.error_message = str(e)
+            logger.error(f"Error joining meeting: {e}")
             raise
 
+    def _get_participant_count(self) -> int:
+        """Get the current participant count in the meeting."""
+        try:
+            # Try to find the roster button that shows participant count
+            count_elem = self.page.locator("span[data-tid='roster-button-tile']").first
+            if count_elem.is_visible(timeout=2000):
+                count_text = count_elem.inner_text().strip()
+                if count_text.isdigit():
+                    return int(count_text)
+            return -1
+        except Exception as e:
+            logger.debug(f"Could not get participant count: {e}")
+            return -1
+
+    def _monitor_participants(self):
+        """Monitor participant count and leave if alone for 5 minutes."""
+        import threading
+
+        low_member_timer = None
+        LOW_MEMBER_WAIT_TIME = 300  # 5 minutes in seconds
+
+        def leave_after_delay():
+            logger.info("5 minutes elapsed with only bot in meeting. Leaving...")
+            self.stop()
+
+        while self.status == BotStatus.RECORDING:
+            try:
+                participant_count = self._get_participant_count()
+
+                if participant_count > 1:
+                    # Other participants present, cancel timer if active
+                    if low_member_timer is not None:
+                        logger.info(f"Participant count increased to {participant_count}. Cancelling auto-leave timer.")
+                        low_member_timer.cancel()
+                        low_member_timer = None
+                elif participant_count == 1:
+                    # Only bot is in the meeting
+                    if low_member_timer is None:
+                        logger.info("Bot is alone in meeting. Starting 5-minute timer before auto-leave.")
+                        low_member_timer = threading.Timer(LOW_MEMBER_WAIT_TIME, leave_after_delay)
+                        low_member_timer.start()
+
+                time.sleep(30)  # Check every 30 seconds
+
+            except Exception as e:
+                logger.error(f"Error monitoring participants: {e}")
+                time.sleep(30)
+
+    def _start_audio_recording(self):
+        """Start recording audio from the virtual sink."""
+        try:
+            logger.info("Starting audio recording")
+            self.audio_recorder = AudioRecorder(
+                sink_name=settings.pulseaudio_monitor_name,
+                output_dir=settings.recordings_dir,
+                session_id=self.session_id
+            )
+            self.audio_recorder.start_recording()
+            self.recording_file = self.audio_recorder.output_file
+            logger.info(f"Audio recording started: {self.recording_file}")
+
+        except Exception as e:
+            logger.error(f"Error starting audio recording: {e}")
+            self.error_message = f"Failed to start audio recording: {e}"
+
     def start(self):
-        """Start the bot and begin recording."""
+        """Start the bot session."""
+        import threading
+
         try:
             logger.info(f"Starting bot session {self.session_id}")
-            self.started_at = datetime.utcnow()
+            self.started_at = datetime.now()
             self.status = BotStatus.JOINING
 
-            # Setup browser (Playwright handles displays internally)
+            # Setup browser
             self._setup_browser()
 
             # Join meeting
             self._join_meeting()
 
-            # Start audio recording if enabled
-            if self.record_audio:
-                logger.info("Starting audio recording")
-                self.recording_file = str(
-                    Path(settings.recordings_dir) / f"{self.session_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.wav"
-                )
-                self.audio_recorder = AudioRecorder(
-                    output_file=self.recording_file,
-                    duration=self.max_duration_minutes * 60 if self.max_duration_minutes else None
-                )
-                self.audio_recorder.start()
-                logger.info(f"Recording started, saving to: {self.recording_file}")
+            # Start audio recording
+            self._start_audio_recording()
 
-            # Keep the bot running
-            if self.max_duration_minutes:
-                logger.info(f"Bot will run for {self.max_duration_minutes} minutes")
-                time.sleep(self.max_duration_minutes * 60)
-                self.stop()
-            else:
-                logger.info("Bot running indefinitely until stopped")
-                # Keep running (will be stopped by stop() call)
-                while self.status == BotStatus.RECORDING:
-                    time.sleep(5)
+            self.status = BotStatus.RECORDING
+            logger.info("Bot session started successfully")
+
+            # Start participant monitoring in background thread
+            monitor_thread = threading.Thread(target=self._monitor_participants, daemon=True)
+            monitor_thread.start()
+            logger.info("Participant monitoring started")
 
         except Exception as e:
-            logger.error(f"Error in bot execution: {e}", exc_info=True)
-            self.status = BotStatus.ERROR
+            logger.error(f"Error starting bot session: {e}")
+            self.status = BotStatus.FAILED
             self.error_message = str(e)
-            self.stop()
+            self.cleanup()
+            raise
 
     def stop(self):
-        """Stop the bot and cleanup resources."""
+        """Stop the bot session."""
+        logger.info(f"Stopping bot session {self.session_id}")
+        self.stopped_at = datetime.now()
+
+        # Stop audio recording
+        if self.audio_recorder:
+            try:
+                self.audio_recorder.stop_recording()
+                logger.info("Audio recording stopped")
+            except Exception as e:
+                logger.error(f"Error stopping audio recording: {e}")
+
+        self.status = BotStatus.STOPPED
+        self.cleanup()
+
+    def cleanup(self):
+        """Clean up browser resources."""
         try:
-            logger.info(f"Stopping bot session {self.session_id}")
-            self.status = BotStatus.LEAVING
-            self.stopped_at = datetime.utcnow()
-
-            # Stop audio recording
-            if self.audio_recorder:
-                logger.info("Stopping audio recording")
-                self.audio_recorder.stop()
-
-            # Close browser and cleanup Playwright
             if self.page:
-                try:
-                    logger.info("Closing page")
-                    self.page.close()
-                except Exception as e:
-                    logger.warning(f"Error closing page: {e}")
-
+                self.page.close()
             if self.context:
-                try:
-                    logger.info("Closing browser context")
-                    self.context.close()
-                except Exception as e:
-                    logger.warning(f"Error closing context: {e}")
-
+                self.context.close()
             if self.browser:
-                try:
-                    logger.info("Closing browser")
-                    self.browser.close()
-                except Exception as e:
-                    logger.warning(f"Error closing browser: {e}")
-
+                self.browser.close()
             if self.playwright:
-                try:
-                    logger.info("Stopping Playwright")
-                    self.playwright.stop()
-                except Exception as e:
-                    logger.warning(f"Error stopping Playwright: {e}")
-
-            self.status = BotStatus.STOPPED
-            logger.info(f"Bot session {self.session_id} stopped successfully")
-
+                self.playwright.stop()
+            logger.info("Browser resources cleaned up")
         except Exception as e:
-            logger.error(f"Error stopping bot: {e}", exc_info=True)
-            self.status = BotStatus.ERROR
-            self.error_message = str(e)
+            logger.error(f"Error during cleanup: {e}")
 
     def get_uptime(self) -> Optional[float]:
-        """Get the uptime of the bot in seconds."""
-        if not self.started_at:
+        """Get the uptime in seconds since bot started."""
+        if self.started_at is None:
             return None
-        end_time = self.stopped_at or datetime.utcnow()
-        return (end_time - self.started_at).total_seconds()
+        if self.stopped_at is not None:
+            return (self.stopped_at - self.started_at).total_seconds()
+        return (datetime.now() - self.started_at).total_seconds()
 
     def get_recording_duration(self) -> Optional[float]:
         """Get the recording duration in seconds."""
-        if self.audio_recorder:
-            return self.audio_recorder.get_duration()
-        return None
+        return self.get_uptime()  # Same as uptime for now
