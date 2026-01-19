@@ -14,6 +14,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools (for numpy compilation)
+    build-essential \
+    python3-dev \
     # Core utilities
     wget \
     curl \
@@ -30,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio-utils \
     alsa-utils \
     libsndfile1 \
+    libportaudio2 \
     # Playwright dependencies (minimal set)
     libnss3 \
     libnspr4 \
