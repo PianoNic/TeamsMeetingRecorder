@@ -1,14 +1,15 @@
 # Teams Meeting Recorder Bot
 
-Ein Python-basierter Bot, der automatisch Microsoft Teams-Meetings beitritt und Audio aufzeichnet. Der Bot verwendet FastAPI für die REST-API, Selenium für die Browser-Automatisierung, und VNC für die visuelle Überwachung.
+Ein Python-basierter Bot, der automatisch Microsoft Teams-Meetings beitritt und Audio aufzeichnet. Der Bot verwendet FastAPI für die REST-API, Playwright für die Browser-Automatisierung, und VNC für die visuelle Überwachung.
 
 ## Features
 
 - **FastAPI REST API**: Einfache HTTP-Endpoints zum Steuern des Bots
+- **Playwright Browser-Automatisierung**: Moderne, performante Browser-Steuerung (2026 Standard)
 - **Automatisches Meeting-Beitreten**: Tritt Teams-Meetings über eine URL bei
 - **Audio-Aufnahme**: Hochwertige Audio-Aufnahme mit PulseAudio und sounddevice
 - **VNC-Zugriff**: Visuelle Überwachung des Bots über VNC oder noVNC (Web)
-- **Docker-basiert**: Vollständig containerisiert mit Docker und Docker Compose
+- **Docker-basiert**: Vollständig containerisiert mit Docker Compose v2
 - **Mehrere Sessions**: Unterstützt mehrere gleichzeitige Recording-Sessions
 - **Konfigurierbar**: Flexible Konfiguration über Umgebungsvariablen
 
@@ -22,8 +23,8 @@ Ein Python-basierter Bot, der automatisch Microsoft Teams-Meetings beitritt und 
          │
          ▼
 ┌─────────────────┐
-│  Teams Bot      │ ← Selenium WebDriver
-│  Controller     │   + Chrome Browser
+│  Teams Bot      │ ← Playwright API
+│  Controller     │   + Chromium Browser
 └────────┬────────┘
          │
          ├─────────────────────┐
@@ -307,6 +308,9 @@ docker compose exec teams-recorder x11vnc -display :99 -forever -shared
 
 Dieses Projekt folgt den neuesten Best Practices:
 
+- **Playwright statt Selenium**: 30-50% bessere Performance und geringere Infrastruktur-Kosten
+- **Auto-Waiting**: Playwright's eingebautes Auto-Waiting reduziert flaky Tests
+- **Browser Context Model**: Effiziente Resource-Nutzung in Docker/Kubernetes
 - **Docker Compose v2/v5**: Verwendet `docker compose` statt deprecated `docker-compose`
 - **compose.yaml**: Moderne Compose-Datei ohne deprecated `version:` Feld
 - **Multi-Stage Docker Builds**: Kleinere Images, bessere Security
@@ -322,12 +326,12 @@ Dieses Projekt folgt den neuesten Best Practices:
 
 - **Python 3.13**: Moderne Python-Version
 - **FastAPI**: Hochperformantes Web-Framework
-- **Selenium 4**: Browser-Automatisierung
+- **Playwright**: Moderne Browser-Automatisierung (2026 Standard, 30-50% effizienter als Selenium)
 - **sounddevice**: Audio-Recording mit NumPy
 - **PulseAudio**: Virtual Audio Sink
 - **Xvfb**: Virtual Display Server
 - **x11vnc**: VNC Server
-- **Docker**: Containerisierung
+- **Docker Compose v2**: Containerisierung
 
 ## Sicherheitshinweise
 
@@ -344,6 +348,9 @@ Dieses Projekt folgt den neuesten Best Practices:
 Dieses Projekt basiert auf aktuellen (2026) Best Practices:
 
 ### Browser-Automatisierung
+- [Playwright Python Best Practices](https://www.browserstack.com/guide/playwright-best-practices)
+- [Playwright vs Selenium 2026](https://www.browserstack.com/guide/playwright-vs-selenium)
+- [Playwright Docker Optimization](https://dev.to/deepak_mishra_35863517037/playwright-vs-selenium-a-2026-architecture-review-347d)
 - [CueMeet Teams Bot](https://github.com/CueMeet/cuemeet-teams-bot)
 - [MS Teams Auto Call Recorder](https://github.com/BartlomiejRasztabiga/ms-teams-auto-call-recorder)
 - [Recall.ai: How to Build a Teams Bot](https://www.recall.ai/blog/how-to-build-a-microsoft-teams-bot)
