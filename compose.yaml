@@ -44,10 +44,11 @@ services:
       - DISPLAY_WIDTH=1920
       - DISPLAY_HEIGHT=1080
       - RUN_XTERM=no
+      - VNC_SERVER=teams-recorder:5900
+      - LISTEN_PORT=8080
     depends_on:
       teams-recorder:
         condition: service_healthy
-    command: --vnc teams-recorder:5900 --listen 8080
     networks:
       - teams-network
     logging:

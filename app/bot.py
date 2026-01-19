@@ -3,6 +3,7 @@
 import time
 import logging
 import uuid
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -59,6 +60,11 @@ class TeamsBot:
         try:
             logger.info("Setting up Playwright Chromium browser")
 
+            # Set DISPLAY environment variable for Xvfb
+            display_num = f":{settings.display_number}"
+            os.environ["DISPLAY"] = display_num
+            logger.info(f"Set DISPLAY to {display_num}")
+
             # Launch Playwright
             self.playwright = sync_playwright().start()
 
@@ -78,12 +84,10 @@ class TeamsBot:
                 "--disable-blink-features=AutomationControlled",
             ]
 
-            # Launch browser with new headless mode (2026 standard)
-            # Uses chromium channel for optimal performance
+            # Launch browser (headless=False to display on Xvfb)
             self.browser = self.playwright.chromium.launch(
                 headless=settings.browser_headless,
-                args=launch_args,
-                channel="chromium"  # Use chromium for new headless mode
+                args=launch_args
             )
 
             # Create browser context with permissions (Playwright's efficient context model)
