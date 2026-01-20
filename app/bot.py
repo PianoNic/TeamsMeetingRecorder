@@ -64,9 +64,10 @@ class TeamsBot:
             args=[
                 "--no-sandbox", "--disable-dev-shm-usage",
                 f"--window-size={settings.display_width},{settings.display_height}",
-                "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-                "--autoplay-policy=no-user-gesture-required", "--mute-audio",
+                "--use-fake-device-for-media-stream",
+                "--autoplay-policy=no-user-gesture-required",
                 f"--alsa-output-device={settings.pulseaudio_sink_name}",
+                f"--alsa-input-device={settings.pulseaudio_monitor_name}",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=AudioServiceOutOfProcess"
             ]
@@ -74,10 +75,47 @@ class TeamsBot:
         
         self.context = await self.browser.new_context(
             viewport={"width": settings.display_width, "height": settings.display_height},
-            permissions=["microphone", "camera"],
             ignore_https_errors=True,
             user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
+        
+        # Grant permissions for all Teams domains
+        await self.context.grant_permissions(
+            ["microphone", "camera"],
+            origin="https://teams.microsoft.com"
+        )
+        await self.context.grant_permissions(
+            ["microphone", "camera"],
+            origin="https://teams.live.com"
+        )
+        
+        # Override audio device labels to show "fake Headset" in Teams UI
+        # await self.context.add_init_script("""
+        #     const origEnumerate = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+        #     Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+        #         writable: true,
+        #         value: async function() {
+        #             const devices = await origEnumerate();
+        #             return devices.map(device => {
+        #                 if (device.kind === 'audioinput' || device.kind === 'audiooutput') {
+        #                     return {
+        #                         ...device,
+        #                         label: 'fake Headset',
+        #                         toJSON: function() {
+        #                             return {
+        #                                 deviceId: this.deviceId,
+        #                                 groupId: this.groupId,
+        #                                 kind: this.kind,
+        #                                 label: 'fake Headset'
+        #                             };
+        #                         }
+        #                     };
+        #                 }
+        #                 return device;
+        #             });
+        #         }
+        #     });
+        # """)
         
         await self.context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
         self.page = await self.context.new_page()
@@ -91,10 +129,15 @@ class TeamsBot:
         await self.page.wait_for_timeout(3000)
 
         # Click web join if available
-        web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
-        if await web_btn.is_visible(timeout=10000):
-            await web_btn.click()
-            await self.page.wait_for_timeout(2000)
+        try:
+            web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
+            if await web_btn.is_visible(timeout=10000):
+                await web_btn.click()
+                await self.page.wait_for_timeout(2000)
+        except Exception as e:
+            screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_web_button_timeout.png"
+            subprocess.run(["scrot", str(screenshot_path)], check=False)
+            logger.warning(f"Web button timeout - screenshot saved: {screenshot_path}")
 
         # Fill name
         await self.page.locator("input[data-tid='prejoin-display-name-input']").first.fill(self.display_name)
@@ -108,9 +151,49 @@ class TeamsBot:
                 logger.info(f"Turned off {name}")
                 await self.page.wait_for_timeout(500)
 
+        # Log selected audio devices
+        try:
+            mic_label = await self.page.locator("button[data-tid='selected-microphone-display'] span.fui-StyledText").first.inner_text()
+            logger.info(f"Selected microphone: {mic_label}")
+        except:
+            logger.info(f"Selected microphone: None")
+        
+        try:
+            speaker_label = await self.page.locator("button[data-tid='selected-speaker-display'] span.fui-StyledText").first.inner_text()
+            logger.info(f"Selected speaker: {speaker_label}")
+        except:
+            logger.info(f"Selected speaker: None")
+
+        # Screenshot before joining (desktop screenshot)
+        screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_before_join.png"
+        subprocess.run(["scrot", str(screenshot_path)], check=False)
+        logger.info(f"Screenshot saved: {screenshot_path}")
+
+        # Click "Allow" text for permissions dialog if it appears
+        # This must be done BEFORE clicking Join to prevent dialog from blocking
+        try:
+            # Click on the "Allow" text link in the permission dialog
+            allow_link = self.page.get_by_text("Allow", exact=True).first
+            await allow_link.wait_for(state="visible", timeout=3000)
+            await allow_link.click(force=True)
+            logger.info("Clicked 'Allow' for camera/mic permissions")
+            
+            # Wait for the dialog overlay to disappear
+            dialog_overlay = self.page.locator("div.ui-dialog__overlay").first
+            await dialog_overlay.wait_for(state="hidden", timeout=5000)
+            logger.info("Permission dialog dismissed")
+        except Exception as e:
+            logger.info("No permission dialog detected or already dismissed")
+
         # Join meeting
         await self.page.locator("button[data-tid='prejoin-join-button']").first.click()
         logger.info("Joining meeting...")
+        await self.page.wait_for_timeout(5000)
+
+        # Screenshot after joining (desktop screenshot)
+        screenshot_path_after = Path(settings.recordings_dir) / f"{self.session_id}_after_join.png"
+        subprocess.run(["scrot", str(screenshot_path_after)], check=False)
+        logger.info(f"Screenshot saved: {screenshot_path_after}")
         await self.page.wait_for_timeout(5000)
 
         # Check if admitted

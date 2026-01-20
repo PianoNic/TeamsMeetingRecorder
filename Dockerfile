@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     procps \
     unzip \
-    # VNC and display dependencies
-    x11vnc \
+    # Display dependencies
     xvfb \
     fluxbox \
     x11-xserver-utils \
@@ -35,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     alsa-utils \
     libsndfile1 \
     libportaudio2 \
+    # Screenshot utility
+    scrot \
     # Playwright dependencies (minimal set)
     libnss3 \
     libnspr4 \
@@ -80,10 +81,6 @@ RUN useradd -m -u 1000 -s /bin/bash botuser && \
 # Copy application code
 COPY --chown=botuser:botuser app/ /app/app/
 
-# Setup VNC and audio directories
-RUN mkdir -p /home/botuser/.vnc /home/botuser/.config/pulse && \
-    chown -R botuser:botuser /home/botuser
-
 # Copy startup scripts
 COPY --chown=botuser:botuser docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
@@ -95,12 +92,12 @@ WORKDIR /app
 
 # Expose ports
 EXPOSE 8000 5900
+WORKDIR /app
+
+# Expose ports
+EXPOSE 8000
 
 # Health check (2026 best practice with proper timing)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/ || exit 1
-
-# Set entrypoint
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # Default command
