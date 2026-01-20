@@ -45,75 +45,126 @@ class TeamsBot:
 
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
-        self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.audio_recorder: Optional[AudioRecorder] = None
-        self.chromium_process: Optional[subprocess.Popen] = None
+        self.sink_name: Optional[str] = None
+        self.monitor_name: Optional[str] = None
+        self.sink_module_id: Optional[str] = None
         self._monitoring_task: Optional[asyncio.Task] = None
 
         logger.info(f"Initialized bot with session ID: {self.session_id}")
 
-    async def _setup_browser(self):
-        """Setup Playwright browser with appropriate options."""
-        logger.info("Setting up Playwright Chromium browser")
-        os.environ["DISPLAY"] = f":{settings.display_number}"
+    def _create_audio_sink(self) -> tuple[str, str, str]:
+        """Create a dedicated virtual audio sink for this session."""
+        import time
+        sink_name = f"teams_sink_{self.session_id[:8]}"
+        monitor_name = f"{sink_name}.monitor"
+        
+        try:
+            logger.info(f"Creating audio sink '{sink_name}' for session {self.session_id}")
+            
+            # Create virtual audio sink
+            cmd = [
+                "pactl", "load-module", "module-null-sink",
+                f"sink_name={sink_name}",
+                f"sink_properties=device.description='Teams_Session_{self.session_id[:8]}'"
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            module_id = result.stdout.strip()
+            
+            # Do NOT set as default sink - let --alsa-output-device handle routing
+            # Setting as default would route ALL system audio to this sink
+            
+            logger.info(f"Audio sink created: {sink_name} -> {monitor_name} (module {module_id})")
+            return sink_name, monitor_name, module_id
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to create audio sink: {e.stderr}")
+            raise Exception(f"Failed to create audio sink: {e.stderr}")
 
+    async def _setup_browser(self):
+        """Setup browser with dedicated audio sink."""
+        logger.info(f"Setting up browser for session {self.session_id}")
+
+        # Create dedicated audio sink FIRST
+        self.sink_name, self.monitor_name, self.sink_module_id = self._create_audio_sink()
+
+        # Set environment variables to force this browser to use the dedicated sink
+        os.environ["DISPLAY"] = f":{settings.display_number}"
+        os.environ["PULSE_SINK"] = self.sink_name
+        os.environ["PULSE_SOURCE"] = self.monitor_name
+        
+        logger.info(f"Browser will use PULSE_SINK={self.sink_name}")
+        
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=False,
             args=[
-                "--no-sandbox", "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
                 f"--window-size={settings.display_width},{settings.display_height}",
                 "--use-fake-device-for-media-stream",
                 "--autoplay-policy=no-user-gesture-required",
-                f"--alsa-output-device={settings.pulseaudio_sink_name}",
-                f"--alsa-input-device={settings.pulseaudio_monitor_name}",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=AudioServiceOutOfProcess"
             ]
         )
-        
-        self.context = await self.browser.new_context(
+
+        self.page = await self.browser.new_page(
             viewport={"width": settings.display_width, "height": settings.display_height},
             ignore_https_errors=True,
             user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
-        
-        # Grant permissions for all Teams domains
-        await self.context.grant_permissions(
+
+        # Grant permissions for Teams domains
+        context = self.page.context
+        await context.grant_permissions(
             ["microphone", "camera"],
             origin="https://teams.microsoft.com"
         )
-        
-        await self.context.grant_permissions(
+        await context.grant_permissions(
             ["microphone", "camera"],
             origin="https://teams.live.com"
         )
-      
-        await self.context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
-        self.page = await self.context.new_page()
+
+        await context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
         self.page.set_default_timeout(settings.selenium_timeout * 1000)
-        logger.info("Browser initialized")
+        logger.info(f"Browser initialized for session {self.session_id}")
 
     async def _join_meeting(self):
         """Join the Teams meeting."""
         logger.info(f"Joining: {self.meeting_url}")
         await self.page.goto(self.meeting_url, wait_until="domcontentloaded")
         await self.page.wait_for_timeout(3000)
+        
+        # Take screenshot after initial page load
+        screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_initial_load.png"
+        subprocess.run(["scrot", str(screenshot_path)], check=False)
+        logger.info(f"Initial load screenshot: {screenshot_path}")
+        logger.info(f"Current URL: {self.page.url}")
 
         # Click web join if available
         try:
             web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
             if await web_btn.is_visible(timeout=10000):
+                logger.info("Found web join button, clicking...")
                 await web_btn.click()
                 await self.page.wait_for_timeout(2000)
+                logger.info(f"After web join click URL: {self.page.url}")
         except Exception as e:
             screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_web_button_timeout.png"
             subprocess.run(["scrot", str(screenshot_path)], check=False)
-            logger.warning(f"Web button timeout - screenshot saved: {screenshot_path}")
+            logger.warning(f"Web button not found - screenshot saved: {screenshot_path}")
 
         # Fill name
-        await self.page.locator("input[data-tid='prejoin-display-name-input']").first.fill(self.display_name)
+        try:
+            await self.page.locator("input[data-tid='prejoin-display-name-input']").first.fill(self.display_name, timeout=30000)
+        except Exception as e:
+            screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_name_input_timeout.png"
+            subprocess.run(["scrot", str(screenshot_path)], check=False)
+            logger.error(f"Name input not found - URL: {self.page.url} - screenshot: {screenshot_path}")
+            raise
         await self.page.wait_for_timeout(1000)
 
         # Turn off camera and mic if they're on
@@ -126,16 +177,10 @@ class TeamsBot:
 
         # Log selected audio devices
         try:
-            mic_label = await self.page.locator("button[data-tid='selected-microphone-display'] span.fui-StyledText").first.inner_text()
-            logger.info(f"Selected microphone: {mic_label}")
-        except:
-            logger.info(f"Selected microphone: None")
-        
-        try:
             speaker_label = await self.page.locator("button[data-tid='selected-speaker-display'] span.fui-StyledText").first.inner_text()
             logger.info(f"Selected speaker: {speaker_label}")
         except:
-            logger.info(f"Selected speaker: None")
+            logger.info(f"Selected speaker: (not found)")
 
         # Screenshot before joining (desktop screenshot)
         screenshot_path = Path(settings.recordings_dir) / f"{self.session_id}_before_join.png"
@@ -157,6 +202,13 @@ class TeamsBot:
             logger.info("Permission dialog dismissed")
         except Exception as e:
             logger.info("No permission dialog detected or already dismissed")
+
+        # Ensure any dialog overlays are gone before clicking Join
+        try:
+            dialog_overlay = self.page.locator("div.ui-dialog__overlay").first
+            await dialog_overlay.wait_for(state="hidden", timeout=2000)
+        except:
+            pass  # No overlay, we're good
 
         # Join meeting
         await self.page.locator("button[data-tid='prejoin-join-button']").first.click()
@@ -274,12 +326,18 @@ class TeamsBot:
                 lobby_task.cancel()
 
     def _start_audio_recording(self):
-        """Start audio recording."""
+        """Start audio recording using the session's dedicated audio sink."""
         Path(settings.recordings_dir).mkdir(parents=True, exist_ok=True)
         self.recording_file = str(Path(settings.recordings_dir) / f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
-        self.audio_recorder = AudioRecorder(output_file=self.recording_file, duration=None)
+        
+        # Pass the session-specific monitor name to the recorder
+        self.audio_recorder = AudioRecorder(
+            output_file=self.recording_file,
+            duration=None,
+            monitor_name=self.monitor_name
+        )
         self.audio_recorder.start()
-        logger.info(f"Recording: {self.recording_file}")
+        logger.info(f"Recording from '{self.monitor_name}' to: {self.recording_file}")
 
     async def start(self):
         """Start the bot."""
@@ -326,11 +384,40 @@ class TeamsBot:
         await self.cleanup()
 
     async def cleanup(self):
-        """Clean up resources."""
-        for resource in [self.page, self.context, self.browser, self.playwright]:
-            if resource:
-                await resource.close() if hasattr(resource, 'close') else await resource.stop()
-        logger.info("Cleanup complete")
+        """Clean up browser and audio resources."""
+        logger.info(f"Cleaning up session {self.session_id}")
+        
+        if self.audio_recorder:
+            self.audio_recorder.stop()
+
+        if self.page:
+            try:
+                await self.page.close()
+            except:
+                pass
+
+        if self.browser:
+            try:
+                await self.browser.close()
+            except:
+                pass
+
+        if self.playwright:
+            try:
+                await self.playwright.stop()
+            except:
+                pass
+
+        # Remove the audio sink
+        if self.sink_module_id:
+            try:
+                subprocess.run(["pactl", "unload-module", self.sink_module_id], check=False)
+                logger.info(f"Audio sink removed: {self.sink_name}")
+            except Exception as e:
+                logger.error(f"Error removing audio sink: {e}")
+
+        self.status = BotStatus.STOPPED
+        logger.info(f"Cleanup complete for {self.session_id}")
 
     def get_uptime(self) -> Optional[float]:
         """Get the uptime in seconds since bot started."""
