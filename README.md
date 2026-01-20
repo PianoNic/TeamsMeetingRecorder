@@ -63,11 +63,8 @@ cp .env.example .env
 
 ```bash
 # Services bauen und starten (Docker Compose v2/v5 - 2026 Standard)
+docker compose build
 docker compose up -d
-
-# Oder mit Makefile
-make build
-make up
 ```
 
 **Hinweis**: Wir verwenden `docker compose` (mit Leerzeichen) statt dem veralteten `docker-compose` (mit Bindestrich), entsprechend den 2026 Best Practices.
@@ -250,18 +247,15 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 **Hinweis**: Für lokale Entwicklung werden trotzdem Xvfb, Chrome, und PulseAudio benötigt.
 
-### Makefile-Befehle
+### Docker Compose Befehle
 
 ```bash
-make help          # Zeigt alle verfügbaren Befehle
-make build         # Docker Image bauen
-make up            # Services starten
-make down          # Services stoppen
-make logs          # Logs anzeigen
-make shell         # Shell im Container öffnen
-make clean         # Alles aufräumen
-make test-api      # API testen
-make healthcheck   # Service-Gesundheit prüfen
+docker compose build              # Docker Image bauen
+docker compose up -d              # Services starten
+docker compose down               # Services stoppen
+docker compose logs -f            # Logs anzeigen
+docker compose exec teams-recorder bash  # Shell im Container öffnen
+docker compose down -v            # Alles aufräumen
 ```
 
 ## Troubleshooting
