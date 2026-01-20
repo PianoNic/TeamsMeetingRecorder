@@ -41,6 +41,7 @@ class TeamsBot:
         self.stopped_at: Optional[datetime] = None
         self.recording_file: Optional[str] = None
         self.error_message: Optional[str] = None
+        self.admitted_to_meeting: bool = False
 
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
@@ -48,6 +49,9 @@ class TeamsBot:
         self.page: Optional[Page] = None
         self.audio_recorder: Optional[AudioRecorder] = None
         self.chromium_process: Optional[subprocess.Popen] = None
+        self._stop_monitoring = None  # Event to signal monitoring thread to stop
+        self._last_participant_check = 0  # Timestamp of last check
+        self._check_interval = 1  # Check every 1 second
 
         logger.info(f"Initialized bot with session ID: {self.session_id}")
 
@@ -142,78 +146,85 @@ class TeamsBot:
             # Enter display name
             try:
                 logger.info(f"Entering display name: {self.display_name}")
-                # Playwright's auto-waiting handles element readiness
-                name_input = self.page.locator("input[type='text'][placeholder*='name' i], input[id*='name' i]").first
+                # Use the specific data-tid from the Teams pre-join interface
+                name_input = self.page.locator("input[data-tid='prejoin-display-name-input']").first
                 name_input.fill(self.display_name)
                 logger.info("Display name entered")
                 self.page.wait_for_timeout(1000)
-            except Exception:
-                logger.warning("Could not find name input field")
+            except Exception as e:
+                logger.warning(f"Could not find name input field: {e}")
 
             # Turn off camera and microphone before joining
             try:
                 logger.info("Turning off camera and microphone")
 
-                # Find and click camera toggle - turn OFF if currently ON
-                # Based on proven working implementations - use nested selector for button
-                camera_button = self.page.locator("toggle-button[data-tid='toggle-video'] > div > button").first
-                if camera_button.is_visible(timeout=5000):
-                    aria_pressed = camera_button.get_attribute("aria-pressed")
-                    logger.info(f"Camera button aria-pressed: {aria_pressed}")
-                    # If aria-pressed="true", camera is ON, so click to turn it OFF
-                    if aria_pressed and aria_pressed.lower() == "true":
-                        camera_button.click()
-                        logger.info("Turned camera OFF")
-                        self.page.wait_for_timeout(500)
+                # Turn off camera using the switch element
+                try:
+                    camera_switch = self.page.locator("input[data-tid='toggle-video'][data-cid='toggle-video-true']").first
+                    if camera_switch.is_visible(timeout=5000):
+                        is_checked = camera_switch.is_checked()
+                        logger.info(f"Camera switch checked (on): {is_checked}")
+                        # If checked (true), camera is ON, so click to turn it OFF
+                        if is_checked:
+                            camera_switch.click()
+                            logger.info("Turned camera OFF")
+                            self.page.wait_for_timeout(500)
+                        else:
+                            logger.info("Camera is already OFF")
                     else:
-                        logger.info("Camera is already OFF")
-                else:
-                    logger.warning("Camera button not found")
+                        logger.warning("Camera switch not found")
+                except Exception as e:
+                    logger.warning(f"Error toggling camera: {e}")
 
-                # Find and click microphone toggle - MUTE if currently UNMUTED
-                # Based on proven working implementations
-                mic_button = self.page.locator("toggle-button[data-tid='toggle-mute'] > div > button").first
-                if mic_button.is_visible(timeout=5000):
-                    aria_pressed = mic_button.get_attribute("aria-pressed")
-                    logger.info(f"Microphone button aria-pressed: {aria_pressed}")
-                    # If aria-pressed="true", microphone is ON (unmuted), so click to mute it
-                    if aria_pressed and aria_pressed.lower() == "true":
-                        mic_button.click()
-                        logger.info("Muted microphone")
-                        self.page.wait_for_timeout(500)
+                # Mute microphone using the switch element
+                try:
+                    mic_switch = self.page.locator("input[data-tid='toggle-mute'][data-cid='toggle-mute-true']").first
+                    if mic_switch.is_visible(timeout=5000):
+                        is_checked = mic_switch.is_checked()
+                        logger.info(f"Microphone switch checked (unmuted): {is_checked}")
+                        # If NOT checked, microphone is already MUTED - we want it muted
+                        # If checked (true), microphone is UNMUTED, so click to mute it
+                        if is_checked:
+                            mic_switch.click()
+                            logger.info("Muted microphone")
+                            self.page.wait_for_timeout(500)
+                        else:
+                            logger.info("Microphone is already muted")
                     else:
-                        logger.info("Microphone is already muted")
-                else:
-                    logger.warning("Microphone button not found")
+                        logger.warning("Microphone switch not found")
+                except Exception as e:
+                    logger.warning(f"Error toggling microphone: {e}")
 
                 logger.info("Camera and microphone processing complete")
             except Exception as e:
-                logger.warning(f"Could not find camera/mic toggle buttons: {e}")
+                logger.warning(f"Error in camera/mic toggle section: {e}")
 
             # Click Join button
             try:
                 logger.info("Looking for Join button")
-                # Playwright's auto-waiting is superior to Selenium's explicit waits
-                join_button = self.page.locator("button:has-text('Join'), button:has-text('Beitreten')").first
+                # Use the specific data-tid from the Teams pre-join interface
+                join_button = self.page.locator("button[data-tid='prejoin-join-button']").first
                 join_button.click()
                 logger.info("Clicked Join button")
                 self.page.wait_for_timeout(5000)
-            except Exception:
-                logger.error("Could not find Join button")
+            except Exception as e:
+                logger.error(f"Could not find Join button: {e}")
                 raise
 
-            # Check if we're in the meeting
+            # Check if we're in the meeting by looking for hangup button
             try:
                 logger.info("Verifying meeting join")
-                # Wait for meeting UI elements
-                self.page.locator("div[class*='calling'], div[class*='meeting'], button[aria-label*='leave' i]").first.wait_for(
-                    timeout=settings.teams_join_timeout * 1000
-                )
-                logger.info("Successfully joined the meeting!")
+                # Wait for hangup button to appear (indicates we're in the meeting)
+                hangup_button = self.page.locator("button[id='hangup-button']").first
+                hangup_button.wait_for(state="visible", timeout=settings.teams_join_timeout * 1000)
+                logger.info("Successfully joined the meeting! (Hangup button visible)")
+                self.admitted_to_meeting = True
                 self.status = BotStatus.RECORDING
 
-            except Exception:
-                logger.warning("Could not verify meeting join, might be in lobby")
+            except Exception as e:
+                logger.warning(f"Could not verify meeting join (hangup button not found): {e}")
+                logger.warning("Might be in lobby or waiting room - will check for admission")
+                self.admitted_to_meeting = False
                 self.status = BotStatus.RECORDING  # Still set to recording, as we might be in lobby
 
         except Exception as e:
@@ -223,62 +234,172 @@ class TeamsBot:
     def _get_participant_count(self) -> int:
         """Get the current participant count in the meeting."""
         try:
-            # Try to find the roster button that shows participant count
-            count_elem = self.page.locator("span[data-tid='roster-button-tile']").first
-            if count_elem.is_visible(timeout=2000):
-                count_text = count_elem.inner_text().strip()
+            # Try to find the badge on the roster/people button that shows participant count
+            # Note: The badge only appears when there are 2+ participants
+            # If no badge is visible, it means only 1 participant (the bot itself)
+            count_badge = self.page.locator("button[id='roster-button'] span[data-tid='toolbar-item-badge']").first
+            if count_badge.is_visible(timeout=2000):
+                count_text = count_badge.inner_text().strip()
                 if count_text.isdigit():
+                    logger.info(f"Participant count from badge: {count_text}")
                     return int(count_text)
+            
+            # No badge visible - check if roster button exists (meaning we're in a meeting)
+            roster_button = self.page.locator("button[id='roster-button']").first
+            if roster_button.is_visible(timeout=2000):
+                # If roster button exists but no badge, it means only 1 participant (the bot)
+                logger.info("No participant badge visible - only bot in meeting (count: 1)")
+                return 1
+            
+            logger.warning("Roster button not found - might not be in meeting yet")
             return -1
         except Exception as e:
-            logger.debug(f"Could not get participant count: {e}")
+            logger.warning(f"Could not get participant count: {e}")
             return -1
 
+    def _leave_meeting(self):
+        """Click the leave/hangup button to exit the meeting."""
+        try:
+            logger.info("Clicking leave button to exit meeting")
+            # Click the hangup/leave button
+            leave_button = self.page.locator("button[id='hangup-button']").first
+            if leave_button.is_visible(timeout=5000):
+                leave_button.click()
+                logger.info("Successfully clicked leave button")
+                self.page.wait_for_timeout(2000)
+            else:
+                logger.warning("Leave button not found")
+        except Exception as e:
+            logger.error(f"Error clicking leave button: {e}")
+
+    def _inject_monitoring_script(self):
+        """Inject a script into the page that monitors participant count and updates a data attribute."""
+        try:
+            logger.info("Injecting participant monitoring script into page")
+            
+            # Inject script that runs every second and updates a data attribute on the body
+            monitor_script = """
+            setInterval(() => {
+                try {
+                    // Check if admitted (hangup button exists)
+                    const hangupButton = document.querySelector("button[id='hangup-button']");
+                    const isAdmitted = hangupButton && hangupButton.offsetParent !== null;
+                    
+                    // Get participant count
+                    let participantCount = -1;
+                    if (isAdmitted) {
+                        const badge = document.querySelector("button[id='roster-button'] span[data-tid='toolbar-item-badge']");
+                        if (badge && badge.offsetParent !== null) {
+                            const text = badge.innerText.trim();
+                            participantCount = parseInt(text) || -1;
+                        } else {
+                            const rosterButton = document.querySelector("button[id='roster-button']");
+                            if (rosterButton && rosterButton.offsetParent !== null) {
+                                participantCount = 1;  // No badge means only bot
+                            }
+                        }
+                    }
+                    
+                    // Store in body dataset for external reading
+                    document.body.setAttribute('data-bot-admitted', isAdmitted ? 'true' : 'false');
+                    document.body.setAttribute('data-bot-participant-count', participantCount.toString());
+                } catch (e) {
+                    console.error('Bot monitoring error:', e);
+                }
+            }, 1000);
+            """
+            
+            self.page.evaluate(monitor_script)
+            logger.info("Monitoring script injected successfully")
+            
+        except Exception as e:
+            logger.error(f"Error injecting monitoring script: {e}")
+
     def _monitor_participants(self):
-        """Monitor participant count and leave if alone for 5 minutes."""
+        """Monitor participant count by reading data attributes set by injected script."""
         import threading
 
-        low_member_timer = None
-        LOW_MEMBER_WAIT_TIME = 300  # 5 minutes in seconds
+        LOBBY_TIMEOUT = 600  # 10 minutes in seconds
 
-        def leave_after_delay():
-            logger.info("5 minutes elapsed with only bot in meeting. Leaving...")
+        def leave_from_lobby():
+            logger.warning("Bot was not admitted to meeting within 10 minutes. Stopping...")
+            self.error_message = "Not admitted to meeting within 10 minutes"
             self.stop()
 
-        while self.status == BotStatus.RECORDING:
+        # Start lobby timeout timer
+        lobby_timer = None
+        if not self.admitted_to_meeting:
+            logger.info("Bot might be in lobby. Starting 10-minute admission timeout.")
+            lobby_timer = threading.Timer(LOBBY_TIMEOUT, leave_from_lobby)
+            lobby_timer.start()
+
+        logger.info("Participant monitoring loop started (reading data attributes)")
+
+        while self.status == BotStatus.RECORDING and not self._stop_monitoring.is_set():
             try:
-                participant_count = self._get_participant_count()
+                # Read the data attributes that the injected script updates
+                # getAttribute is thread-safe for reading simple attributes
+                is_admitted_str = self.page.get_attribute('body', 'data-bot-admitted')
+                participant_count_str = self.page.get_attribute('body', 'data-bot-participant-count')
+                
+                if is_admitted_str and participant_count_str:
+                    is_admitted = is_admitted_str == 'true'
+                    participant_count = int(participant_count_str)
+                    
+                    # Check if bot has been admitted
+                    if not self.admitted_to_meeting and is_admitted:
+                        logger.info("Bot has been admitted to the meeting!")
+                        self.admitted_to_meeting = True
+                        # Cancel lobby timeout
+                        if lobby_timer is not None:
+                            lobby_timer.cancel()
+                            lobby_timer = None
 
-                if participant_count > 1:
-                    # Other participants present, cancel timer if active
-                    if low_member_timer is not None:
-                        logger.info(f"Participant count increased to {participant_count}. Cancelling auto-leave timer.")
-                        low_member_timer.cancel()
-                        low_member_timer = None
-                elif participant_count == 1:
-                    # Only bot is in the meeting
-                    if low_member_timer is None:
-                        logger.info("Bot is alone in meeting. Starting 5-minute timer before auto-leave.")
-                        low_member_timer = threading.Timer(LOW_MEMBER_WAIT_TIME, leave_after_delay)
-                        low_member_timer.start()
+                    # Monitor participant count if admitted
+                    if self.admitted_to_meeting:
+                        logger.info(f"Current participant count: {participant_count}")
 
-                time.sleep(30)  # Check every 30 seconds
+                        if participant_count == 1:
+                            # Only bot is in the meeting - leave immediately
+                            logger.info("Bot is alone in meeting. Leaving immediately...")
+                            self.stop()
+                            break
+                        elif participant_count > 1:
+                            logger.info(f"Other participants present ({participant_count} total)")
+                    else:
+                        logger.info("Not admitted yet, waiting...")
+                
+                # Wait 1 second or until stop is signaled
+                self._stop_monitoring.wait(timeout=1)
 
             except Exception as e:
                 logger.error(f"Error monitoring participants: {e}")
-                time.sleep(30)
+                self._stop_monitoring.wait(timeout=1)
+
+        # Cleanup timers if monitoring stops
+        logger.info("Participant monitoring loop ended")
+        if lobby_timer is not None:
+            lobby_timer.cancel()
 
     def _start_audio_recording(self):
         """Start recording audio from the virtual sink."""
         try:
             logger.info("Starting audio recording")
+            
+            # Create output file path
+            from pathlib import Path
+            recordings_dir = Path(settings.recordings_dir)
+            recordings_dir.mkdir(parents=True, exist_ok=True)
+            
+            output_file = recordings_dir / f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+            self.recording_file = str(output_file)
+            
+            # Initialize AudioRecorder with correct parameters
             self.audio_recorder = AudioRecorder(
-                sink_name=settings.pulseaudio_monitor_name,
-                output_dir=settings.recordings_dir,
-                session_id=self.session_id
+                output_file=self.recording_file,
+                duration=None  # Unlimited duration
             )
-            self.audio_recorder.start_recording()
-            self.recording_file = self.audio_recorder.output_file
+            self.audio_recorder.start()
             logger.info(f"Audio recording started: {self.recording_file}")
 
         except Exception as e:
@@ -293,12 +414,16 @@ class TeamsBot:
             logger.info(f"Starting bot session {self.session_id}")
             self.started_at = datetime.now()
             self.status = BotStatus.JOINING
+            self._stop_monitoring = threading.Event()
 
             # Setup browser
             self._setup_browser()
 
             # Join meeting
             self._join_meeting()
+
+            # Inject monitoring script into the page
+            self._inject_monitoring_script()
 
             # Start audio recording
             self._start_audio_recording()
@@ -323,10 +448,21 @@ class TeamsBot:
         logger.info(f"Stopping bot session {self.session_id}")
         self.stopped_at = datetime.now()
 
+        # Signal monitoring thread to stop
+        if self._stop_monitoring:
+            self._stop_monitoring.set()
+
+        # Leave the meeting first
+        if self.page and self.status == BotStatus.RECORDING:
+            try:
+                self._leave_meeting()
+            except Exception as e:
+                logger.error(f"Error leaving meeting: {e}")
+
         # Stop audio recording
         if self.audio_recorder:
             try:
-                self.audio_recorder.stop_recording()
+                self.audio_recorder.stop()
                 logger.info("Audio recording stopped")
             except Exception as e:
                 logger.error(f"Error stopping audio recording: {e}")
