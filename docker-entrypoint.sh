@@ -24,7 +24,7 @@ pactl list sinks short
 
 # Start Xvfb
 echo "Starting Xvfb on display ${DISPLAY:-:99}..."
-Xvfb ${DISPLAY:-:99} -screen 0 ${DISPLAY_WIDTH:-1920}x${DISPLAY_HEIGHT:-1080}x24 -ac +extension GLX +render -noreset &
+Xvfb ${DISPLAY:-:99} -screen 0 ${DISPLAY_WIDTH:-1920}x${DISPLAY_HEIGHT:-1080}x24 -ac +extension GLX +render -noreset 2>/dev/null &
 XVFB_PID=$!
 sleep 2
 
