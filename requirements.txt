@@ -10,3 +10,4 @@ sounddevice==0.4.6
 soundfile==0.12.1
 numpy==1.26.3
 minio==7.2.10
+aiohttp==3.10.1

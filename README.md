@@ -23,6 +23,7 @@ TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting particip
 - **High-Quality Audio**: 48kHz stereo recording with session-specific PulseAudio sinks
 - **Automatic Participant Detection**: Leaves meeting when alone
 - **Flexible Storage**: Save recordings locally or to MinIO/S3-compatible storage
+- **Webhook Notifications**: Get notified when recordings complete (local or S3 upload)
 - **Docker Ready**: Fully containerized with Docker Compose
 
 ## 🐳 Docker & Container Registry Usage
@@ -175,6 +176,73 @@ Login to MinIO Console with the credentials from your `.env` file (default: `min
 - Recordings uploaded after meeting ends
 - Local temporary files cleaned up after successful upload
 - Files organized by session ID in MinIO
+
+## 🔔 Webhook Configuration
+
+TeamsMeetingRecorder can notify your application when a recording finishes (both for local and MinIO storage) by sending an HTTP POST request to a configured webhook URL.
+
+### Setup
+
+**1. Set the webhook URL in environment variables:**
+```env
+WEBHOOK_URL=https://your-api.example.com/webhook
+```
+
+**2. (Optional) Update `compose.yaml`:**
+```yaml
+services:
+  teams-recorder:
+    environment:
+      - WEBHOOK_URL=https://your-api.example.com/webhook
+```
+
+### Webhook Payload
+
+When a recording completes or fails, the following JSON payload is sent to your webhook URL:
+
+**Example with MinIO storage:**
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
+  "file_location": "https://minio.example.com:9000/recordings/550e8400-e29b-41d4-a716-446655440000/550e8400-e29b-41d4-a716-446655440000_20250121_143022.wav",
+  "started_at": "2025-01-21T14:30:22.123456",
+  "stopped_at": "2025-01-21T14:35:45.654321"
+}
+```
+
+**Example with local storage:**
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
+  "file_location": "/app/recordings/550e8400-e29b-41d4-a716-446655440000_20250121_143022.wav",
+  "started_at": "2025-01-21T14:30:22.123456",
+  "stopped_at": "2025-01-21T14:35:45.654321"
+}
+```
+
+### Webhook Details
+
+- **Timeout**: 30 seconds
+- **Method**: HTTP POST
+- **Content-Type**: `application/json`
+- **Success Status Codes**: 200, 201, 202, 204
+- **Fire-and-Forget**: Webhook sends in background without blocking recording completion
+- **Triggered On**:
+  - ✅ Recording completes successfully (local storage)
+  - ✅ Recording uploaded to MinIO/S3
+  - ✅ Recording fails (sent with empty `file_location`)
+
+### Field Descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | Unique identifier for the recording session (UUID) |
+| `meeting_url` | string | The Teams meeting URL that was joined |
+| `file_location` | string | Local file path (for local storage) or MinIO URL (for MinIO/S3 storage). Empty string if recording failed. |
+| `started_at` | ISO 8601 | When the bot started the session |
+| `stopped_at` | ISO 8601 | When the bot stopped the session |
 
 ## ⚠️ Legal & Privacy
 

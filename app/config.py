@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     minio_bucket: str = "recordings"
     minio_secure: bool = True
 
+    # Webhook settings (optional)
+    # Called when a recording finishes saving (both local and MinIO)
+    webhook_url: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
