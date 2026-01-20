@@ -30,20 +30,12 @@ sleep 2
 
 # Start window manager
 echo "Starting Fluxbox window manager..."
-fluxbox &
+fluxbox 2>/dev/null &
 sleep 1
-
-# Start VNC server
-echo "Starting VNC server on port ${VNC_PORT:-5900}..."
-x11vnc -display ${DISPLAY:-:99} -forever -shared -rfbport ${VNC_PORT:-5900} -passwd teams123 &
-VNC_PID=$!
-sleep 2
 
 echo "==================================="
 echo "Services started successfully!"
 echo "==================================="
-echo "VNC Server: localhost:5900 (password: teams123)"
-echo "noVNC Web: http://localhost:8080"
 echo "FastAPI: http://localhost:8000"
 echo "Swagger Docs: http://localhost:8000/docs"
 echo "==================================="
