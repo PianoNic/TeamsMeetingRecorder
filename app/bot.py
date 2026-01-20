@@ -1,6 +1,6 @@
 """Teams bot controller using Playwright."""
 
-import time
+import asyncio
 import logging
 import uuid
 import os
@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext, Playwright
+from playwright.async_api import async_playwright, Browser, Page, BrowserContext, Playwright
 
 from app.config import settings
 from app.models import BotStatus
@@ -49,187 +49,81 @@ class TeamsBot:
         self.page: Optional[Page] = None
         self.audio_recorder: Optional[AudioRecorder] = None
         self.chromium_process: Optional[subprocess.Popen] = None
-        self._stop_monitoring = None  # Event to signal monitoring thread to stop
-        self._last_participant_check = 0  # Timestamp of last check
-        self._check_interval = 1  # Check every 1 second
+        self._monitoring_task: Optional[asyncio.Task] = None
 
         logger.info(f"Initialized bot with session ID: {self.session_id}")
 
-    def _setup_browser(self):
+    async def _setup_browser(self):
         """Setup Playwright browser with appropriate options."""
-        try:
-            logger.info("Setting up Playwright Chromium browser")
+        logger.info("Setting up Playwright Chromium browser")
+        os.environ["DISPLAY"] = f":{settings.display_number}"
 
-            # Set DISPLAY environment variable for Xvfb
-            display_num = f":{settings.display_number}"
-            os.environ["DISPLAY"] = display_num
-            logger.info(f"Set DISPLAY to {display_num}")
-
-            # Launch Playwright
-            self.playwright = sync_playwright().start()
-
-            # Browser launch arguments for visible window
-            launch_args = [
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(
+            headless=False,
+            args=[
+                "--no-sandbox", "--disable-dev-shm-usage",
                 f"--window-size={settings.display_width},{settings.display_height}",
-                # Allow media access but keep muted
-                "--use-fake-ui-for-media-stream",
-                "--use-fake-device-for-media-stream",
-                "--autoplay-policy=no-user-gesture-required",
-                # Mute audio output to prevent beeping
-                "--mute-audio",
-                # Use virtual audio device
+                "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                "--autoplay-policy=no-user-gesture-required", "--mute-audio",
                 f"--alsa-output-device={settings.pulseaudio_sink_name}",
-                # Additional stability
                 "--disable-blink-features=AutomationControlled",
-                "--disable-features=AudioServiceOutOfProcess",
+                "--disable-features=AudioServiceOutOfProcess"
             ]
+        )
+        
+        self.context = await self.browser.new_context(
+            viewport={"width": settings.display_width, "height": settings.display_height},
+            permissions=["microphone", "camera"],
+            ignore_https_errors=True,
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        
+        await self.context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+        self.page = await self.context.new_page()
+        self.page.set_default_timeout(settings.selenium_timeout * 1000)
+        logger.info("Browser initialized")
 
-            # Launch browser with headless=False for visible window
-            logger.info("Launching browser with headless=False")
-            self.browser = self.playwright.chromium.launch(
-                headless=False,
-                args=launch_args
-            )
+    async def _join_meeting(self):
+        """Join the Teams meeting."""
+        logger.info(f"Joining: {self.meeting_url}")
+        await self.page.goto(self.meeting_url, wait_until="domcontentloaded")
+        await self.page.wait_for_timeout(3000)
 
-            # Create browser context
-            self.context = self.browser.new_context(
-                viewport={
-                    "width": settings.display_width,
-                    "height": settings.display_height
-                },
-                permissions=["microphone", "camera"],
-                ignore_https_errors=True,
-                java_script_enabled=True,
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
+        # Click web join if available
+        web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
+        if await web_btn.is_visible(timeout=10000):
+            await web_btn.click()
+            await self.page.wait_for_timeout(2000)
 
-            # Set extra HTTP headers
-            self.context.set_extra_http_headers({
-                "Accept-Language": "en-US,en;q=0.9",
-            })
+        # Fill name
+        await self.page.locator("input[data-tid='prejoin-display-name-input']").first.fill(self.display_name)
+        await self.page.wait_for_timeout(1000)
 
-            # Create new page
-            self.page = self.context.new_page()
+        # Turn off camera and mic if they're on
+        for tid, name in [("toggle-video", "camera"), ("toggle-mute", "mic")]:
+            toggle = self.page.locator(f"input[data-tid='{tid}'][data-cid='{tid}-true']").first
+            if await toggle.is_visible(timeout=5000) and await toggle.is_checked():
+                await toggle.click()
+                logger.info(f"Turned off {name}")
+                await self.page.wait_for_timeout(500)
 
-            # Set default timeout
-            self.page.set_default_timeout(settings.selenium_timeout * 1000)
+        # Join meeting
+        await self.page.locator("button[data-tid='prejoin-join-button']").first.click()
+        logger.info("Joining meeting...")
+        await self.page.wait_for_timeout(5000)
 
-            logger.info("Playwright browser initialized successfully")
-
-        except Exception as e:
-            logger.error(f"Error setting up browser: {e}")
-            raise
-
-    def _join_meeting(self):
-        """Join the Teams meeting using Playwright's auto-waiting."""
+        # Check if admitted
+        hangup = self.page.locator("button[id='hangup-button']").first
         try:
-            logger.info(f"Navigating to meeting URL: {self.meeting_url}")
-            self.page.goto(self.meeting_url, wait_until="domcontentloaded")
-
-            # Wait for page to load
-            self.page.wait_for_timeout(3000)
-
-            # Try to join via browser (without app)
-            try:
-                logger.info("Looking for 'Join on the web instead' button")
-                # Playwright auto-waits for element - no explicit waits needed!
-                web_join_button = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
-                if web_join_button.is_visible(timeout=10000):
-                    web_join_button.click()
-                    logger.info("Clicked 'Join on the web' button")
-                    self.page.wait_for_timeout(2000)
-            except Exception:
-                logger.info("No 'Join on the web' button found, might already be on web version")
-
-            # Enter display name
-            try:
-                logger.info(f"Entering display name: {self.display_name}")
-                # Use the specific data-tid from the Teams pre-join interface
-                name_input = self.page.locator("input[data-tid='prejoin-display-name-input']").first
-                name_input.fill(self.display_name)
-                logger.info("Display name entered")
-                self.page.wait_for_timeout(1000)
-            except Exception as e:
-                logger.warning(f"Could not find name input field: {e}")
-
-            # Turn off camera and microphone before joining
-            try:
-                logger.info("Turning off camera and microphone")
-
-                # Turn off camera using the switch element
-                try:
-                    camera_switch = self.page.locator("input[data-tid='toggle-video'][data-cid='toggle-video-true']").first
-                    if camera_switch.is_visible(timeout=5000):
-                        is_checked = camera_switch.is_checked()
-                        logger.info(f"Camera switch checked (on): {is_checked}")
-                        # If checked (true), camera is ON, so click to turn it OFF
-                        if is_checked:
-                            camera_switch.click()
-                            logger.info("Turned camera OFF")
-                            self.page.wait_for_timeout(500)
-                        else:
-                            logger.info("Camera is already OFF")
-                    else:
-                        logger.warning("Camera switch not found")
-                except Exception as e:
-                    logger.warning(f"Error toggling camera: {e}")
-
-                # Mute microphone using the switch element
-                try:
-                    mic_switch = self.page.locator("input[data-tid='toggle-mute'][data-cid='toggle-mute-true']").first
-                    if mic_switch.is_visible(timeout=5000):
-                        is_checked = mic_switch.is_checked()
-                        logger.info(f"Microphone switch checked (unmuted): {is_checked}")
-                        # If NOT checked, microphone is already MUTED - we want it muted
-                        # If checked (true), microphone is UNMUTED, so click to mute it
-                        if is_checked:
-                            mic_switch.click()
-                            logger.info("Muted microphone")
-                            self.page.wait_for_timeout(500)
-                        else:
-                            logger.info("Microphone is already muted")
-                    else:
-                        logger.warning("Microphone switch not found")
-                except Exception as e:
-                    logger.warning(f"Error toggling microphone: {e}")
-
-                logger.info("Camera and microphone processing complete")
-            except Exception as e:
-                logger.warning(f"Error in camera/mic toggle section: {e}")
-
-            # Click Join button
-            try:
-                logger.info("Looking for Join button")
-                # Use the specific data-tid from the Teams pre-join interface
-                join_button = self.page.locator("button[data-tid='prejoin-join-button']").first
-                join_button.click()
-                logger.info("Clicked Join button")
-                self.page.wait_for_timeout(5000)
-            except Exception as e:
-                logger.error(f"Could not find Join button: {e}")
-                raise
-
-            # Check if we're in the meeting by looking for hangup button
-            try:
-                logger.info("Verifying meeting join")
-                # Wait for hangup button to appear (indicates we're in the meeting)
-                hangup_button = self.page.locator("button[id='hangup-button']").first
-                hangup_button.wait_for(state="visible", timeout=settings.teams_join_timeout * 1000)
-                logger.info("Successfully joined the meeting! (Hangup button visible)")
-                self.admitted_to_meeting = True
-                self.status = BotStatus.RECORDING
-
-            except Exception as e:
-                logger.warning(f"Could not verify meeting join (hangup button not found): {e}")
-                logger.warning("Might be in lobby or waiting room - will check for admission")
-                self.admitted_to_meeting = False
-                self.status = BotStatus.RECORDING  # Still set to recording, as we might be in lobby
-
-        except Exception as e:
-            logger.error(f"Error joining meeting: {e}")
-            raise
+            await hangup.wait_for(state="visible", timeout=settings.teams_join_timeout * 1000)
+            self.admitted_to_meeting = True
+            logger.info("Joined meeting")
+        except:
+            logger.info("In lobby, waiting for admission")
+            self.admitted_to_meeting = False
+        
+        self.status = BotStatus.RECORDING
 
     def _get_participant_count(self) -> int:
         """Get the current participant count in the meeting."""
@@ -257,233 +151,130 @@ class TeamsBot:
             logger.warning(f"Could not get participant count: {e}")
             return -1
 
-    def _leave_meeting(self):
-        """Click the leave/hangup button to exit the meeting."""
-        try:
-            logger.info("Clicking leave button to exit meeting")
-            # Click the hangup/leave button
-            leave_button = self.page.locator("button[id='hangup-button']").first
-            if leave_button.is_visible(timeout=5000):
-                leave_button.click()
-                logger.info("Successfully clicked leave button")
-                self.page.wait_for_timeout(2000)
-            else:
-                logger.warning("Leave button not found")
-        except Exception as e:
-            logger.error(f"Error clicking leave button: {e}")
+    async def _leave_meeting(self):
+        """Leave the meeting."""
+        leave_btn = self.page.locator("button[id='hangup-button']").first
+        if await leave_btn.is_visible(timeout=5000):
+            await leave_btn.click()
+            logger.info("Left meeting")
+            await self.page.wait_for_timeout(2000)
 
-    def _inject_monitoring_script(self):
-        """Inject a script into the page that monitors participant count and updates a data attribute."""
-        try:
-            logger.info("Injecting participant monitoring script into page")
-            
-            # Inject script that runs every second and updates a data attribute on the body
-            monitor_script = """
+    async def _inject_monitoring_script(self):
+        """Inject monitoring script into page."""
+        await self.page.evaluate("""
             setInterval(() => {
                 try {
-                    // Check if admitted (hangup button exists)
-                    const hangupButton = document.querySelector("button[id='hangup-button']");
-                    const isAdmitted = hangupButton && hangupButton.offsetParent !== null;
+                    const hangup = document.querySelector("button[id='hangup-button']");
+                    const isAdmitted = hangup?.offsetParent !== null;
+                    let count = -1;
                     
-                    // Get participant count
-                    let participantCount = -1;
                     if (isAdmitted) {
                         const badge = document.querySelector("button[id='roster-button'] span[data-tid='toolbar-item-badge']");
-                        if (badge && badge.offsetParent !== null) {
-                            const text = badge.innerText.trim();
-                            participantCount = parseInt(text) || -1;
-                        } else {
-                            const rosterButton = document.querySelector("button[id='roster-button']");
-                            if (rosterButton && rosterButton.offsetParent !== null) {
-                                participantCount = 1;  // No badge means only bot
-                            }
-                        }
+                        const roster = document.querySelector("button[id='roster-button']");
+                        count = badge?.offsetParent ? parseInt(badge.innerText) || -1 : roster?.offsetParent ? 1 : -1;
                     }
                     
-                    // Store in body dataset for external reading
-                    document.body.setAttribute('data-bot-admitted', isAdmitted ? 'true' : 'false');
-                    document.body.setAttribute('data-bot-participant-count', participantCount.toString());
-                } catch (e) {
-                    console.error('Bot monitoring error:', e);
-                }
+                    document.body.setAttribute('data-bot-admitted', isAdmitted);
+                    document.body.setAttribute('data-bot-participant-count', count);
+                } catch (e) {}
             }, 1000);
-            """
-            
-            self.page.evaluate(monitor_script)
-            logger.info("Monitoring script injected successfully")
-            
-        except Exception as e:
-            logger.error(f"Error injecting monitoring script: {e}")
+        """)
+        logger.info("Monitoring script injected")
 
-    def _monitor_participants(self):
-        """Monitor participant count by reading data attributes set by injected script."""
-        import threading
+    async def _monitor_participants(self):
+        """Monitor participant count."""
+        async def lobby_timeout():
+            await asyncio.sleep(600)
+            self.error_message = "Not admitted within 10 minutes"
+            await self.stop()
 
-        LOBBY_TIMEOUT = 600  # 10 minutes in seconds
+        lobby_task = asyncio.create_task(lobby_timeout()) if not self.admitted_to_meeting else None
+        logger.info("Monitoring started")
+        last_count = None
 
-        def leave_from_lobby():
-            logger.warning("Bot was not admitted to meeting within 10 minutes. Stopping...")
-            self.error_message = "Not admitted to meeting within 10 minutes"
-            self.stop()
-
-        # Start lobby timeout timer
-        lobby_timer = None
-        if not self.admitted_to_meeting:
-            logger.info("Bot might be in lobby. Starting 10-minute admission timeout.")
-            lobby_timer = threading.Timer(LOBBY_TIMEOUT, leave_from_lobby)
-            lobby_timer.start()
-
-        logger.info("Participant monitoring loop started (reading data attributes)")
-
-        while self.status == BotStatus.RECORDING and not self._stop_monitoring.is_set():
-            try:
-                # Read the data attributes that the injected script updates
-                # getAttribute is thread-safe for reading simple attributes
-                is_admitted_str = self.page.get_attribute('body', 'data-bot-admitted')
-                participant_count_str = self.page.get_attribute('body', 'data-bot-participant-count')
+        try:
+            while self.status == BotStatus.RECORDING:
+                admitted = await self.page.get_attribute('body', 'data-bot-admitted') == 'true'
+                count = int(await self.page.get_attribute('body', 'data-bot-participant-count') or -1)
                 
-                if is_admitted_str and participant_count_str:
-                    is_admitted = is_admitted_str == 'true'
-                    participant_count = int(participant_count_str)
-                    
-                    # Check if bot has been admitted
-                    if not self.admitted_to_meeting and is_admitted:
-                        logger.info("Bot has been admitted to the meeting!")
-                        self.admitted_to_meeting = True
-                        # Cancel lobby timeout
-                        if lobby_timer is not None:
-                            lobby_timer.cancel()
-                            lobby_timer = None
-
-                    # Monitor participant count if admitted
-                    if self.admitted_to_meeting:
-                        logger.info(f"Current participant count: {participant_count}")
-
-                        if participant_count == 1:
-                            # Only bot is in the meeting - leave immediately
-                            logger.info("Bot is alone in meeting. Leaving immediately...")
-                            self.stop()
-                            break
-                        elif participant_count > 1:
-                            logger.info(f"Other participants present ({participant_count} total)")
-                    else:
-                        logger.info("Not admitted yet, waiting...")
+                if not self.admitted_to_meeting and admitted:
+                    self.admitted_to_meeting = True
+                    if lobby_task:
+                        lobby_task.cancel()
+                    logger.info("Admitted to meeting")
                 
-                # Wait 1 second or until stop is signaled
-                self._stop_monitoring.wait(timeout=1)
-
-            except Exception as e:
-                logger.error(f"Error monitoring participants: {e}")
-                self._stop_monitoring.wait(timeout=1)
-
-        # Cleanup timers if monitoring stops
-        logger.info("Participant monitoring loop ended")
-        if lobby_timer is not None:
-            lobby_timer.cancel()
+                if self.admitted_to_meeting:
+                    if count != last_count:
+                        logger.info(f"Participants: {count}")
+                        last_count = count
+                    if count == 1:
+                        logger.info("Alone in meeting, leaving")
+                        await self.stop()
+                        break
+                
+                await asyncio.sleep(1)
+        finally:
+            if lobby_task and not lobby_task.done():
+                lobby_task.cancel()
 
     def _start_audio_recording(self):
-        """Start recording audio from the virtual sink."""
+        """Start audio recording."""
+        Path(settings.recordings_dir).mkdir(parents=True, exist_ok=True)
+        self.recording_file = str(Path(settings.recordings_dir) / f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+        self.audio_recorder = AudioRecorder(output_file=self.recording_file, duration=None)
+        self.audio_recorder.start()
+        logger.info(f"Recording: {self.recording_file}")
+
+    async def start(self):
+        """Start the bot."""
         try:
-            logger.info("Starting audio recording")
-            
-            # Create output file path
-            from pathlib import Path
-            recordings_dir = Path(settings.recordings_dir)
-            recordings_dir.mkdir(parents=True, exist_ok=True)
-            
-            output_file = recordings_dir / f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-            self.recording_file = str(output_file)
-            
-            # Initialize AudioRecorder with correct parameters
-            self.audio_recorder = AudioRecorder(
-                output_file=self.recording_file,
-                duration=None  # Unlimited duration
-            )
-            self.audio_recorder.start()
-            logger.info(f"Audio recording started: {self.recording_file}")
-
-        except Exception as e:
-            logger.error(f"Error starting audio recording: {e}")
-            self.error_message = f"Failed to start audio recording: {e}"
-
-    def start(self):
-        """Start the bot session."""
-        import threading
-
-        try:
-            logger.info(f"Starting bot session {self.session_id}")
+            logger.info(f"Starting session {self.session_id}")
             self.started_at = datetime.now()
             self.status = BotStatus.JOINING
-            self._stop_monitoring = threading.Event()
 
-            # Setup browser
-            self._setup_browser()
-
-            # Join meeting
-            self._join_meeting()
-
-            # Inject monitoring script into the page
-            self._inject_monitoring_script()
-
-            # Start audio recording
+            await self._setup_browser()
+            await self._join_meeting()
+            await self._inject_monitoring_script()
             self._start_audio_recording()
 
             self.status = BotStatus.RECORDING
-            logger.info("Bot session started successfully")
-
-            # Start participant monitoring in background thread
-            monitor_thread = threading.Thread(target=self._monitor_participants, daemon=True)
-            monitor_thread.start()
-            logger.info("Participant monitoring started")
-
+            self._monitoring_task = asyncio.create_task(self._monitor_participants())
+            logger.info("Bot started")
         except Exception as e:
-            logger.error(f"Error starting bot session: {e}")
+            logger.error(f"Start failed: {e}")
             self.status = BotStatus.FAILED
             self.error_message = str(e)
-            self.cleanup()
+            await self.cleanup()
             raise
 
-    def stop(self):
-        """Stop the bot session."""
-        logger.info(f"Stopping bot session {self.session_id}")
+    async def stop(self):
+        """Stop the bot."""
+        logger.info(f"Stopping {self.session_id}")
         self.stopped_at = datetime.now()
 
-        # Signal monitoring thread to stop
-        if self._stop_monitoring:
-            self._stop_monitoring.set()
+        if self._monitoring_task and not self._monitoring_task.done():
+            self._monitoring_task.cancel()
+            try:
+                await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
 
-        # Leave the meeting first
         if self.page and self.status == BotStatus.RECORDING:
-            try:
-                self._leave_meeting()
-            except Exception as e:
-                logger.error(f"Error leaving meeting: {e}")
+            await self._leave_meeting()
 
-        # Stop audio recording
         if self.audio_recorder:
-            try:
-                self.audio_recorder.stop()
-                logger.info("Audio recording stopped")
-            except Exception as e:
-                logger.error(f"Error stopping audio recording: {e}")
+            self.audio_recorder.stop()
+            logger.info("Recording stopped")
 
         self.status = BotStatus.STOPPED
-        self.cleanup()
+        await self.cleanup()
 
-    def cleanup(self):
-        """Clean up browser resources."""
-        try:
-            if self.page:
-                self.page.close()
-            if self.context:
-                self.context.close()
-            if self.browser:
-                self.browser.close()
-            if self.playwright:
-                self.playwright.stop()
-            logger.info("Browser resources cleaned up")
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+    async def cleanup(self):
+        """Clean up resources."""
+        for resource in [self.page, self.context, self.browser, self.playwright]:
+            if resource:
+                await resource.close() if hasattr(resource, 'close') else await resource.stop()
+        logger.info("Cleanup complete")
 
     def get_uptime(self) -> Optional[float]:
         """Get the uptime in seconds since bot started."""
