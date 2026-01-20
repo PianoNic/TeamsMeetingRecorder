@@ -84,39 +84,12 @@ class TeamsBot:
             ["microphone", "camera"],
             origin="https://teams.microsoft.com"
         )
+        
         await self.context.grant_permissions(
             ["microphone", "camera"],
             origin="https://teams.live.com"
         )
-        
-        # Override audio device labels to show "fake Headset" in Teams UI
-        # await self.context.add_init_script("""
-        #     const origEnumerate = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
-        #     Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
-        #         writable: true,
-        #         value: async function() {
-        #             const devices = await origEnumerate();
-        #             return devices.map(device => {
-        #                 if (device.kind === 'audioinput' || device.kind === 'audiooutput') {
-        #                     return {
-        #                         ...device,
-        #                         label: 'fake Headset',
-        #                         toJSON: function() {
-        #                             return {
-        #                                 deviceId: this.deviceId,
-        #                                 groupId: this.groupId,
-        #                                 kind: this.kind,
-        #                                 label: 'fake Headset'
-        #                             };
-        #                         }
-        #                     };
-        #                 }
-        #                 return device;
-        #             });
-        #         }
-        #     });
-        # """)
-        
+      
         await self.context.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
         self.page = await self.context.new_page()
         self.page.set_default_timeout(settings.selenium_timeout * 1000)
