@@ -21,10 +21,8 @@ cd TeamsMeetingRecorder
 
 ```bash
 # Mit Docker Compose v2
+docker compose build
 docker compose up -d
-
-# ODER mit Makefile
-make up
 ```
 
 Das war's! Die Services laufen jetzt:
@@ -100,11 +98,10 @@ Die Datei wird auch hier gespeichert:
 ## Nützliche Befehle
 
 ```bash
-make help          # Alle verfügbaren Befehle
-make status        # Service-Status anzeigen
-make logs          # Logs anschauen
-make shell         # Shell im Container öffnen
-make clean         # Alles aufräumen
+docker compose ps                    # Service-Status anzeigen
+docker compose logs -f               # Logs anschauen
+docker compose exec teams-recorder bash  # Shell im Container öffnen
+docker compose down -v               # Alles aufräumen
 ```
 
 ## Troubleshooting
@@ -123,7 +120,7 @@ docker compose logs
 
 1. Prüfe die Teams-URL
 2. Schaue über noVNC zu: http://localhost:8080
-3. Checke die Logs: `make logs`
+3. Checke die Logs: `docker compose logs -f`
 
 ### Port bereits belegt
 
