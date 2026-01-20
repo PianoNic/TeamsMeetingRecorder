@@ -12,7 +12,6 @@ xset -b 2>/dev/null || true
 # Start PulseAudio
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 || true
-sleep 2
 
 # Create virtual audio sink
 echo "Setting up virtual audio sink..."

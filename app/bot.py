@@ -13,6 +13,7 @@ from playwright.async_api import async_playwright, Browser, Page, BrowserContext
 from app.config import settings, DISPLAY_NUMBER, DISPLAY_WIDTH, DISPLAY_HEIGHT, BROWSER_TIMEOUT, RECORDINGS_DIR
 from app.models import BotStatus
 from app.recorder import AudioRecorder
+from app.storage import storage
 from app.utils import save_screenshot
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class TeamsBot:
         self.started_at: Optional[datetime] = None
         self.stopped_at: Optional[datetime] = None
         self.recording_file: Optional[str] = None
+        self.storage_path: Optional[str] = None
         self.error_message: Optional[str] = None
 
         self.playwright: Optional[Playwright] = None
@@ -213,7 +215,11 @@ class TeamsBot:
     def _start_audio_recording(self):
         """Start audio recording using the session's dedicated audio sink."""
         Path(RECORDINGS_DIR).mkdir(parents=True, exist_ok=True)
-        self.recording_file = str(Path(RECORDINGS_DIR) / f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav")
+        filename = f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        self.recording_file = str(Path(RECORDINGS_DIR) / filename)
+        
+        # Store the storage path for later upload (if using MinIO)
+        self.storage_path = storage.get_file_path(self.session_id, filename)
         
         self.audio_recorder = AudioRecorder(
             output_file=self.recording_file,
@@ -261,6 +267,21 @@ class TeamsBot:
         if self.audio_recorder:
             self.audio_recorder.stop()
             logger.info("Recording stopped")
+            
+            # Upload to storage if using MinIO
+            if settings.storage_backend == "minio" and self.recording_file and self.storage_path:
+                logger.info(f"Uploading recording to storage: {self.storage_path}")
+                success = storage.upload_file(self.recording_file, self.storage_path)
+                if success:
+                    logger.info(f"Successfully uploaded to storage")
+                    # Clean up local file after successful upload
+                    try:
+                        Path(self.recording_file).unlink(missing_ok=True)
+                        logger.info(f"Removed local temporary file: {self.recording_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove local file: {e}")
+                else:
+                    logger.error(f"Failed to upload to storage, keeping local file")
 
         self.status = BotStatus.STOPPED
         await self.cleanup()
