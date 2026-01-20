@@ -1,52 +1,44 @@
-# TeamsMeetingRecorder
+# <p align="center">TeamsMeetingRecorder</p>
+<p align="center">
+  <strong>A headless bot that automatically joins Microsoft Teams meetings and records audio.</strong>
+</p> 
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.13-blue.svg" alt="Python 3.13">
-  <img src="https://img.shields.io/badge/docker-ready-brightgreen.svg" alt="Docker Ready">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=5558d9&style=flat" alt="visits"/></a>
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsMeetingRecorder?color=5558d9"/></a>
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsMeetingRecorder?include_prereleases&color=5558d9&label=Latest%20Release"/></a>
+  <a href="#-docker--container-registry-usage"><img src="https://img.shields.io/badge/Selfhost-Instructions-5558d9.svg"/></a>
 </p>
 
-A headless bot that automatically joins Microsoft Teams meetings and records audio. Built with FastAPI, Playwright, and PulseAudio for reliable, automated meeting recording.
-
-> **Important**  
-> This project is NOT affiliated with, endorsed by, or connected to Microsoft Teams or Microsoft Corporation in any way. This is an independent tool for automated meeting recording.
-
----
+> [!IMPORTANT]
+> This project is **NOT** affiliated with, endorsed by, or connected to Microsoft Teams or Microsoft Corporation in any way. This is an independent tool for automated meeting recording.
 
 ## ⚙️ About The Project
-
-TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting participation and audio recording. It uses browser automation to join meetings, processes audio through isolated PulseAudio sinks, and provides a REST API for controlling recording sessions. Perfect for automated meeting documentation, interview recording, or compliance purposes.
-
----
+TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting participation and audio recording. It uses browser automation to join meetings, processes audio through isolated PulseAudio sinks, and provides a REST API for controlling recording sessions.
 
 ## ✨ Features
-
 - **REST API**: Control bot via HTTP endpoints (FastAPI)
-- **Browser Automation**: Modern Playwright-based browser control (30-50% faster than Selenium)
+- **Browser Automation**: Modern Playwright-based browser control
 - **Multi-Session Support**: Record multiple meetings simultaneously with isolated audio
 - **High-Quality Audio**: 48kHz stereo recording with session-specific PulseAudio sinks
 - **Automatic Participant Detection**: Leaves meeting when alone
 - **Docker Ready**: Fully containerized with Docker Compose
-- **Headless Operation**: Runs in background with Xvfb virtual display
-
----
 
 ## 🐳 Docker & Container Registry Usage
 
 ### Option 1: Pull and Run a Pre-built Image
 
-Pull the latest image from Docker Hub or GitHub Container Registry:
-
+**Docker Hub:**
 ```bash
-# Docker Hub
 docker pull pianonic/teamsmeetingrecorder:latest
+```
 
-# GitHub Container Registry
+**GitHub Container Registry:**
+```bash
 docker pull ghcr.io/pianonic/teamsmeetingrecorder:latest
 ```
 
 Then run:
-
 ```bash
 docker run -d \
   -p 8000:8000 \
@@ -56,12 +48,11 @@ docker run -d \
   pianonic/teamsmeetingrecorder:latest
 ```
 
-Access the API at [http://localhost:8000](http://localhost:8000)
+The API will be available at [http://localhost:8000](http://localhost:8000)
 
 ### Option 2: Run with Docker Compose (Recommended)
 
-1. **Create a `compose.yaml` file:**
-
+**1. Create a `compose.yaml` file:**
 ```yaml
 services:
   teams-recorder:
@@ -82,8 +73,7 @@ services:
       start_period: 40s
 ```
 
-2. **Start it:**
-
+**2. Start it:**
 ```bash
 docker compose up -d
 ```
@@ -91,14 +81,9 @@ docker compose up -d
 The API will be available at [http://localhost:8000](http://localhost:8000)  
 Swagger docs at [http://localhost:8000/docs](http://localhost:8000/docs)
 
----
-
 ## 🚀 Usage
 
-### API Endpoints
-
-#### Join a Meeting
-
+### Join a Meeting
 ```bash
 curl -X POST http://localhost:8000/join \
   -H "Content-Type: application/json" \
@@ -108,196 +93,20 @@ curl -X POST http://localhost:8000/join \
   }'
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Bot joining with session ID: abc-123-def",
-  "session": {
-    "session_id": "abc-123-def",
-    "meeting_url": "https://teams.microsoft.com/...",
-    "display_name": "Recording Bot",
-    "status": "joining",
-    "started_at": "2026-01-20T10:30:00Z"
-  }
-}
-```
-
-#### Check Session Status
-
+### Check Status
 ```bash
 curl http://localhost:8000/status/{session_id}
 ```
 
-#### Stop Recording
-
+### Stop Recording
 ```bash
 curl -X POST http://localhost:8000/stop/{session_id}
 ```
 
-#### List Active Sessions
-
+### List Active Sessions
 ```bash
 curl http://localhost:8000/sessions
 ```
-
-**Response:**
-```json
-[
-  {
-    "session_id": "abc-123-def",
-    "display_name": "Recording Bot",
-    "status": "recording",
-    "uptime_seconds": 125.5
-  }
-]
-```
-
-### Python Client Example
-
-```python
-import requests
-import time
-
-API_BASE = "http://localhost:8000"
-
-# Join meeting
-response = requests.post(f"{API_BASE}/join", json={
-    "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
-    "display_name": "Bot Recorder"
-})
-
-session_id = response.json()["session"]["session_id"]
-print(f"Session started: {session_id}")
-
-# Check status
-time.sleep(10)
-status = requests.get(f"{API_BASE}/status/{session_id}").json()
-print(f"Status: {status['status']}")
-
-# Stop when done
-# requests.post(f"{API_BASE}/stop/{session_id}")
-```
-
----
-
-## 🛠️ Configuration
-
-### Environment Variables
-
-Create a `.env` file (optional):
-
-```env
-# Display settings
-DISPLAY_WIDTH=1920
-DISPLAY_HEIGHT=1080
-
-# Audio settings
-DEFAULT_SAMPLE_RATE=48000
-DEFAULT_CHANNELS=2
-
-# Meeting behavior
-TEAMS_WAIT_FOR_LOBBY=5  # minutes to wait in lobby
-
-# Directories
-RECORDINGS_DIR=/app/recordings
-```
-
-### Docker Compose Customization
-
-Adjust `compose.yaml` for your needs:
-
-```yaml
-services:
-  teams-recorder:
-    # More RAM for browser
-    shm_size: '4gb'
-    
-    # Environment variables
-    environment:
-      - DISPLAY_WIDTH=1920
-      - DISPLAY_HEIGHT=1080
-    
-    # Persistent recordings
-    volumes:
-      - ./recordings:/app/recordings
-```
-
----
-
-## 📋 Requirements
-
-- **Docker** (≥ 20.10)
-- **Docker Compose** (≥ 2.0)
-- **2GB RAM** (for browser and audio processing)
-- **Internet connection**
-
----
-
-## 🔧 Development
-
-### Build from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/PianoNic/TeamsMeetingRecorder.git
-cd TeamsMeetingRecorder
-
-# Build and run
-docker compose build
-docker compose up -d
-```
-
-### Local Development (without Docker)
-
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run API
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-> **Note:** Local development requires Xvfb, Chromium, and PulseAudio installed on your system.
-
----
-
-## 🔍 Troubleshooting
-
-### Browser crashes or high memory usage
-
-Increase shared memory in `compose.yaml`:
-
-```yaml
-shm_size: '4gb'
-```
-
-### Bot can't join meeting
-
-1. Check the Teams URL is correct
-2. View logs: `docker compose logs -f`
-3. Verify the meeting hasn't started or ended
-
-### No audio in recordings
-
-Check PulseAudio devices:
-
-```bash
-docker compose exec teams-recorder pactl list sinks short
-```
-
-### Check container health
-
-```bash
-docker compose ps
-docker compose logs teams-recorder
-```
-
----
 
 ## ⚠️ Legal & Privacy
 
@@ -309,20 +118,14 @@ docker compose logs teams-recorder
 - Do **not** expose this API publicly without authentication
 - Use only for **legitimate purposes** (documentation, compliance, etc.)
 
+## 📜 License
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
 ---
-
-## 🏗️ Architecture
-
-Built with modern 2026 best practices:
-
-- **Python 3.13** - Latest Python release
-- **FastAPI** - High-performance async web framework
-- **Playwright** - Modern browser automation (30-50% faster than Selenium)
-- **sounddevice** - Professional audio recording
-- **PulseAudio** - Session-isolated virtual audio sinks
-- **Docker Compose v2** - Modern containerization
-- **Multi-stage builds** - Optimized Docker images
-- **Non-root user** - Enhanced container security
+<p align="center">Made with ❤️ by <a href="https://github.com/PianoNic">PianoNic</a></p>
+<p align="center">
+  <a href="https://buymeacoffee.com/pianonic"><img src="https://img.shields.io/badge/-buy_me_a%C2%A0coffee-gray?logo=buy-me-a-coffee" alt="Buy Me A Coffee"/></a>
+</p>
 
 ## Architektur
 
