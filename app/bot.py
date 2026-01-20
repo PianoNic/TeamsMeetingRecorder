@@ -15,6 +15,7 @@ from app.models import BotStatus
 from app.recorder import AudioRecorder
 from app.storage import storage
 from app.utils import save_screenshot
+from app.webhook import send_webhook_async, WebhookPayload
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +247,22 @@ class TeamsBot:
             logger.error(f"Start failed: {e}")
             self.status = BotStatus.FAILED
             self.error_message = str(e)
+            self.stopped_at = datetime.now()
+
+            # Send failure webhook notification if configured
+            if settings.webhook_url and self.started_at and self.stopped_at:
+                try:
+                    webhook_payload = WebhookPayload(
+                        session_id=self.session_id,
+                        meeting_url=self.meeting_url,
+                        file_location="",
+                        started_at=self.started_at,
+                        stopped_at=self.stopped_at
+                    )
+                    await send_webhook_async(settings.webhook_url, webhook_payload)
+                except Exception as webhook_error:
+                    logger.error(f"Error sending failure webhook: {webhook_error}")
+
             await self.cleanup()
             raise
 
@@ -267,7 +284,7 @@ class TeamsBot:
         if self.audio_recorder:
             self.audio_recorder.stop()
             logger.info("Recording stopped")
-            
+
             # Upload to storage if using MinIO
             if settings.storage_backend == "minio" and self.recording_file and self.storage_path:
                 logger.info(f"Uploading recording to storage: {self.storage_path}")
@@ -282,6 +299,29 @@ class TeamsBot:
                         logger.warning(f"Failed to remove local file: {e}")
                 else:
                     logger.error(f"Failed to upload to storage, keeping local file")
+
+        # Send webhook notification if configured
+        if settings.webhook_url and self.recording_file and self.started_at and self.stopped_at:
+            try:
+                # Determine file location: MinIO URL or local path
+                if settings.storage_backend == "minio" and self.storage_path:
+                    # Construct MinIO URL
+                    protocol = "https" if settings.minio_secure else "http"
+                    file_location = f"{protocol}://{settings.minio_endpoint}/{settings.minio_bucket}/{self.storage_path}"
+                else:
+                    # Use local file path
+                    file_location = self.recording_file
+
+                webhook_payload = WebhookPayload(
+                    session_id=self.session_id,
+                    meeting_url=self.meeting_url,
+                    file_location=file_location,
+                    started_at=self.started_at,
+                    stopped_at=self.stopped_at
+                )
+                await send_webhook_async(settings.webhook_url, webhook_payload)
+            except Exception as e:
+                logger.error(f"Error sending webhook: {e}")
 
         self.status = BotStatus.STOPPED
         await self.cleanup()
