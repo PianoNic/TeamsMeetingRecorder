@@ -75,7 +75,7 @@ FROM dependencies AS runtime
 
 # Create non-root user for security (2026 best practice)
 RUN useradd -m -u 1000 -s /bin/bash botuser && \
-    mkdir -p /app /app/recordings /app/logs && \
+    mkdir -p /app /app/recordings && \
     chown -R botuser:botuser /app
 
 # Copy application code
