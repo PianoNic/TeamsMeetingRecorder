@@ -1,0 +1,81 @@
+services:
+  teams-recorder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teams-meeting-recorder
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - STORAGE_BACKEND=minio
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-recordings}
+      - MINIO_SECURE=false
+    depends_on:
+      minio:
+        condition: service_healthy
+    shm_size: '2gb'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - teams-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: teams-minio
+    ports:
+      - "9000:9000"      # MinIO API
+      - "9001:9001"      # MinIO Console
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - teams-network
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: teams-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin};
+      mc mb myminio/${MINIO_BUCKET:-recordings} --ignore-existing;
+      mc anonymous set download myminio/${MINIO_BUCKET:-recordings};
+      mc anonymous set upload myminio/${MINIO_BUCKET:-recordings};
+      echo 'Bucket ${MINIO_BUCKET:-recordings} created and configured for public access';
+      exit 0;
+      "
+    networks:
+      - teams-network
+
+networks:
+  teams-network:
+    driver: bridge
+
+volumes:
+  minio-data:
+    driver: local

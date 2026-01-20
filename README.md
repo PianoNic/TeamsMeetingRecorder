@@ -22,6 +22,7 @@ TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting particip
 - **Multi-Session Support**: Record multiple meetings simultaneously with isolated audio
 - **High-Quality Audio**: 48kHz stereo recording with session-specific PulseAudio sinks
 - **Automatic Participant Detection**: Leaves meeting when alone
+- **Flexible Storage**: Save recordings locally or to MinIO/S3-compatible storage
 - **Docker Ready**: Fully containerized with Docker Compose
 
 ## 🐳 Docker & Container Registry Usage
@@ -107,6 +108,73 @@ curl -X POST http://localhost:8000/stop/{session_id}
 ```bash
 curl http://localhost:8000/sessions
 ```
+
+## 🗄️ Storage Configuration
+
+TeamsMeetingRecorder supports two storage backends:
+
+### Local Storage (Default)
+Recordings are saved to the local filesystem (`/app/recordings` in container, mounted as `./recordings` on host).
+
+No additional configuration needed.
+
+### MinIO/S3 Storage
+Store recordings in MinIO or any S3-compatible object storage.
+
+#### Option 1: Use External MinIO/S3 Service
+
+**1. Set environment variables:**
+```env
+STORAGE_BACKEND=minio
+MINIO_ENDPOINT=minio.example.com:9000
+MINIO_ACCESS_KEY=your-access-key
+MINIO_SECRET_KEY=your-secret-key
+MINIO_BUCKET=recordings
+MINIO_SECURE=true
+```
+
+**2. Update `compose.yaml`:**
+```yaml
+services:
+  teams-recorder:
+    environment:
+      - STORAGE_BACKEND=minio
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+      - MINIO_SECURE=${MINIO_SECURE}
+    # Remove the recordings volume mount if not needed
+```
+
+#### Option 2: Run MinIO Locally (Recommended for Testing)
+
+Use the included `minio.compose.yml` to run MinIO alongside the recorder:
+
+**1. Create `.env` file:**
+```env
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=recordings
+```
+
+**2. Start both services:**
+```bash
+docker compose -f minio.compose.yml up -d
+```
+
+**Access:**
+- **MinIO Console**: [http://localhost:9001](http://localhost:9001)
+- **MinIO API**: [http://localhost:9000](http://localhost:9000)
+- **API**: [http://localhost:8000](http://localhost:8000)
+
+Login to MinIO Console with the credentials from your `.env` file (default: `minioadmin` / `minioadmin`).
+
+**Features:**
+- Automatic bucket creation if it doesn't exist
+- Recordings uploaded after meeting ends
+- Local temporary files cleaned up after successful upload
+- Files organized by session ID in MinIO
 
 ## ⚠️ Legal & Privacy
 

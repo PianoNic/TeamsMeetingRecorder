@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # Debug screenshots
     debug_screenshots: bool = False
 
+    # Storage backend: 'local' or 'minio'
+    storage_backend: str = "local"
+
+    # MinIO settings (only used when storage_backend='minio')
+    minio_endpoint: Optional[str] = None
+    minio_access_key: Optional[str] = None
+    minio_secret_key: Optional[str] = None
+    minio_bucket: str = "recordings"
+    minio_secure: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
