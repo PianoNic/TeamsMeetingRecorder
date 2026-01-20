@@ -17,16 +17,18 @@ logger = logging.getLogger(__name__)
 class AudioRecorder:
     """Records audio from a PulseAudio virtual sink monitor."""
 
-    def __init__(self, output_file: str, duration: Optional[float] = None):
+    def __init__(self, output_file: str, duration: Optional[float] = None, monitor_name: Optional[str] = None):
         """
         Initialize the audio recorder.
 
         Args:
             output_file: Path to save the recording
             duration: Maximum recording duration in seconds (None for unlimited)
+            monitor_name: Specific PulseAudio monitor to record from (optional)
         """
         self.output_file = output_file
         self.duration = duration
+        self.monitor_name = monitor_name
         self.sample_rate = settings.default_sample_rate
         self.channels = settings.default_channels
 
@@ -51,13 +53,18 @@ class AudioRecorder:
             for idx, device in enumerate(devices):
                 logger.info(f"  [{idx}] {device['name']} - Inputs: {device['max_input_channels']}")
 
-                # Look for our virtual sink monitor
-                if settings.pulseaudio_monitor_name in device['name']:
+                # If a specific monitor name was provided, look for it
+                if self.monitor_name and self.monitor_name in device['name']:
+                    logger.info(f"Found specified monitor device '{self.monitor_name}' at index {idx}")
+                    return idx
+
+                # Fallback: look for the default virtual sink monitor
+                if not self.monitor_name and settings.pulseaudio_monitor_name in device['name']:
                     logger.info(f"Found PulseAudio monitor device at index {idx}")
                     return idx
 
                 # Also check for alternative monitor naming
-                if 'monitor' in device['name'].lower() and device['max_input_channels'] > 0:
+                if not self.monitor_name and 'monitor' in device['name'].lower() and device['max_input_channels'] > 0:
                     logger.info(f"Found alternative monitor device at index {idx}: {device['name']}")
                     return idx
 
