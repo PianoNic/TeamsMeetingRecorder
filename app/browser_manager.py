@@ -7,7 +7,7 @@ import subprocess
 from typing import Optional, Dict
 from playwright.async_api import async_playwright, Browser, Playwright
 
-from app.config import settings
+from app.config import settings, DISPLAY_NUMBER, DISPLAY_WIDTH, DISPLAY_HEIGHT
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class BrowserManager:
             return
 
         logger.info("Initializing shared browser instance")
-        os.environ["DISPLAY"] = f":{settings.display_number}"
+        os.environ["DISPLAY"] = f":{DISPLAY_NUMBER}"
 
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
@@ -50,7 +50,7 @@ class BrowserManager:
             args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                f"--window-size={settings.display_width},{settings.display_height}",
+                f"--window-size={DISPLAY_WIDTH},{DISPLAY_HEIGHT}",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=AudioServiceOutOfProcess"

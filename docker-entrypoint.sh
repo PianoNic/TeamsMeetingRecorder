@@ -16,15 +16,15 @@ sleep 2
 
 # Create virtual audio sink
 echo "Setting up virtual audio sink..."
-pactl load-module module-null-sink sink_name=${PULSEAUDIO_SINK_NAME:-teams_virtual_sink} sink_properties=device.description="Teams_Virtual_Sink" || true
+pactl load-module module-null-sink sink_name=teams_virtual_sink sink_properties=device.description="Teams_Virtual_Sink" || true
 
 # List audio devices for debugging
 echo "Available audio devices:"
 pactl list sinks short
 
 # Start Xvfb
-echo "Starting Xvfb on display ${DISPLAY:-:99}..."
-Xvfb ${DISPLAY:-:99} -screen 0 ${DISPLAY_WIDTH:-1920}x${DISPLAY_HEIGHT:-1080}x24 -ac +extension GLX +render -noreset 2>/dev/null &
+echo "Starting Xvfb on display :99..."
+Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset 2>/dev/null &
 XVFB_PID=$!
 sleep 2
 

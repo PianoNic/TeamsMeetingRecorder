@@ -5,17 +5,11 @@ services:
       dockerfile: Dockerfile
     container_name: teams-meeting-recorder
     ports:
-      - "8000:8000"  # FastAPI
-    environment:
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - DISPLAY=:99
-      - PULSEAUDIO_SINK_NAME=teams_virtual_sink
-      - PULSEAUDIO_MONITOR_NAME=teams_virtual_sink.monitor
+      - "8000:8000"
+    env_file: .env
     volumes:
       - ./recordings:/app/recordings
       - ./logs:/app/logs
-      # Share /dev/shm for browser stability (2026 best practice)
     shm_size: '2gb'
     restart: unless-stopped
     healthcheck:
