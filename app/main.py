@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from app.config import settings
 from app.models import (
     JoinMeetingRequest,
     RecordingResponse,
@@ -18,13 +17,14 @@ from app.models import (
     BotStatus
 )
 from app.bot import TeamsBot
+from app.config import RECORDINGS_DIR, LOGS_DIR, API_TITLE, API_VERSION
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(f"{settings.logs_dir}/app.log"),
+        logging.FileHandler(f"{LOGS_DIR}/app.log"),
         logging.StreamHandler()
     ]
 )
@@ -38,8 +38,8 @@ active_sessions: Dict[str, TeamsBot] = {}
 async def lifespan(app: FastAPI):
     """Lifecycle manager."""
     logger.info("Starting Teams Meeting Recorder API")
-    Path(settings.recordings_dir).mkdir(parents=True, exist_ok=True)
-    Path(settings.logs_dir).mkdir(parents=True, exist_ok=True)
+    Path(RECORDINGS_DIR).mkdir(parents=True, exist_ok=True)
+    Path(LOGS_DIR).mkdir(parents=True, exist_ok=True)
     yield
     logger.info("Shutting down - cleaning up sessions")
     for sid, bot in list(active_sessions.items()):
@@ -50,8 +50,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.api_title,
-    version=settings.api_version,
+    title=API_TITLE,
+    version=API_VERSION,
     description="API for recording Microsoft Teams meetings using a bot",
     lifespan=lifespan
 )
@@ -61,8 +61,8 @@ app = FastAPI(
 async def root():
     """Root endpoint with API information."""
     return {
-        "name": settings.api_title,
-        "version": settings.api_version,
+        "name": API_TITLE,
+        "version": API_VERSION,
         "status": "running",
         "active_sessions": len(active_sessions)
     }
@@ -153,7 +153,7 @@ async def download_recording(session_id: str):
             return FileResponse(recording_file, media_type="audio/wav", filename=Path(recording_file).name)
     
     # Search recordings directory
-    for file in Path(settings.recordings_dir).glob(f"{session_id}*.wav"):
+    for file in Path(RECORDINGS_DIR).glob(f"{session_id}*.wav"):
         return FileResponse(str(file), media_type="audio/wav", filename=file.name)
     
     raise HTTPException(status_code=404, detail=f"Recording for {session_id} not found")
@@ -173,8 +173,8 @@ def main():
     """Run the FastAPI application."""
     uvicorn.run(
         "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
+        host="0.0.0.0",
+        port=8000,
         reload=False,
         log_level="info"
     )

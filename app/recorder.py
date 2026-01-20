@@ -1,6 +1,7 @@
 """Audio recording module using sounddevice and PulseAudio."""
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime
@@ -9,28 +10,25 @@ import sounddevice as sd
 import soundfile as sf
 import numpy as np
 
-from app.config import settings
+from app.config import settings, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, PULSEAUDIO_MONITOR_NAME, PULSEAUDIO_SINK_NAME
 
 logger = logging.getLogger(__name__)
-
 
 class AudioRecorder:
     """Records audio from a PulseAudio virtual sink monitor."""
 
-    def __init__(self, output_file: str, duration: Optional[float] = None, monitor_name: Optional[str] = None):
+    def __init__(self, output_file: str, monitor_name: Optional[str] = None):
         """
         Initialize the audio recorder.
 
         Args:
             output_file: Path to save the recording
-            duration: Maximum recording duration in seconds (None for unlimited)
             monitor_name: Specific PulseAudio monitor to record from (optional)
         """
         self.output_file = output_file
-        self.duration = duration
         self.monitor_name = monitor_name
-        self.sample_rate = settings.default_sample_rate
-        self.channels = settings.default_channels
+        self.sample_rate = DEFAULT_SAMPLE_RATE
+        self.channels = DEFAULT_CHANNELS
 
         self.is_recording = False
         self.recording_thread: Optional[threading.Thread] = None
@@ -39,91 +37,60 @@ class AudioRecorder:
 
         logger.info(f"Audio recorder initialized: {output_file}")
 
-    def _get_pulseaudio_device(self) -> Optional[int]:
-        """
-        Find the PulseAudio monitor device for recording.
-
-        Returns:
-            Device index or None if not found
-        """
+    def _log_available_devices(self):
+        """Log available audio devices for debugging."""
         try:
             devices = sd.query_devices()
-            logger.info("Available audio devices:")
-
+            msg = "Available audio devices:\n"
             for idx, device in enumerate(devices):
-                logger.info(f"  [{idx}] {device['name']} - Inputs: {device['max_input_channels']}")
-
-                # If a specific monitor name was provided, look for it
-                if self.monitor_name and self.monitor_name in device['name']:
-                    logger.info(f"Found specified monitor device '{self.monitor_name}' at index {idx}")
-                    return idx
-
-                # Fallback: look for the default virtual sink monitor
-                if not self.monitor_name and settings.pulseaudio_monitor_name in device['name']:
-                    logger.info(f"Found PulseAudio monitor device at index {idx}")
-                    return idx
-
-                # Also check for alternative monitor naming
-                if not self.monitor_name and 'monitor' in device['name'].lower() and device['max_input_channels'] > 0:
-                    logger.info(f"Found alternative monitor device at index {idx}: {device['name']}")
-                    return idx
-
-            logger.warning("Could not find PulseAudio monitor device, using default")
-            return None
-
+                msg += f"  [{idx}] {device['name']} - Inputs: {device['max_input_channels']}\n"
+            msg += f"Recording from: {self.monitor_name}"
+            logger.info(msg)
         except Exception as e:
             logger.error(f"Error querying audio devices: {e}")
-            return None
 
     def _record_audio(self):
         """Internal method to record audio in a separate thread."""
-        try:
-            device_index = self._get_pulseaudio_device()
+    
+        # Set PULSE_SOURCE environment variable to route audio from the session-specific monitor
+        os.environ["PULSE_SOURCE"] = self.monitor_name
+        logger.info(f"Recording from PulseAudio monitor: {self.monitor_name}")
+        
+        # Log available devices at debug level
+        self._log_available_devices()
 
-            logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
-            logger.info(f"Using device index: {device_index}")
+        logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
 
-            # Calculate duration in frames
-            duration_frames = int(self.duration * self.sample_rate) if self.duration else None
+        # Record audio
+        with sf.SoundFile(
+            self.output_file,
+            mode='w',
+            samplerate=self.sample_rate,
+            channels=self.channels,
+            subtype='PCM_24'
+        ) as file:
 
-            # Record audio
-            with sf.SoundFile(
-                self.output_file,
-                mode='w',
-                samplerate=self.sample_rate,
+            # Use a callback to continuously record
+            def callback(indata, frames, time_info, status):
+                if status:
+                    logger.warning(f"Audio callback status: {status}")
+                if self.is_recording:
+                    file.write(indata)
+
+            # Use device=None to let PulseAudio use PULSE_SOURCE environment variable
+            with sd.InputStream(
+                device=None,
                 channels=self.channels,
-                subtype='PCM_24'
-            ) as file:
+                samplerate=self.sample_rate,
+                callback=callback
+            ):
+                logger.info("Audio stream started successfully")
 
-                # Use a callback to continuously record
-                def callback(indata, frames, time_info, status):
-                    if status:
-                        logger.warning(f"Audio callback status: {status}")
-                    if self.is_recording:
-                        file.write(indata)
+                # Record until stopped
+                while self.is_recording:
+                    time.sleep(0.1)
 
-                # Start recording stream
-                with sd.InputStream(
-                    device=device_index,
-                    channels=self.channels,
-                    samplerate=self.sample_rate,
-                    callback=callback
-                ):
-                    logger.info("Audio stream started")
-
-                    if self.duration:
-                        # Record for specified duration
-                        time.sleep(self.duration)
-                    else:
-                        # Record until stopped
-                        while self.is_recording:
-                            time.sleep(0.1)
-
-            logger.info(f"Recording saved to: {self.output_file}")
-
-        except Exception as e:
-            logger.error(f"Error recording audio: {e}", exc_info=True)
-            self.is_recording = False
+        logger.info(f"Recording saved to: {self.output_file}")
 
     def start(self):
         """Start recording audio in a background thread."""
@@ -194,15 +161,15 @@ def setup_virtual_audio_sink():
         # Load null sink module
         cmd = [
             "pactl", "load-module", "module-null-sink",
-            f"sink_name={settings.pulseaudio_sink_name}",
+            f"sink_name={PULSEAUDIO_SINK_NAME}",
             f"sink_properties=device.description='Teams_Virtual_Audio_Sink'"
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
-            logger.info(f"Virtual sink created: {settings.pulseaudio_sink_name}")
-            logger.info(f"Monitor available at: {settings.pulseaudio_monitor_name}")
+            logger.info(f"Virtual sink created: {PULSEAUDIO_SINK_NAME}")
+            logger.info(f"Monitor available at: {PULSEAUDIO_MONITOR_NAME}")
             return True
         else:
             logger.error(f"Error creating virtual sink: {result.stderr}")
