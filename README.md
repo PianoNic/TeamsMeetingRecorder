@@ -1,6 +1,6 @@
 # <p align="center">TeamsMeetingRecorder</p>
 <p align="center">
-  <strong>A headless bot that automatically joins Microsoft Teams meetings and records audio.</strong>
+  <strong>A simple bot that automatically joins Microsoft Teams meetings and records audio.</strong>
 </p> 
 
 <p align="center">
@@ -14,13 +14,13 @@
 > This project is **NOT** affiliated with, endorsed by, or connected to Microsoft Teams or Microsoft Corporation in any way. This is an independent tool for automated meeting recording.
 
 ## ⚙️ About The Project
-TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting participation and audio recording. It uses browser automation to join meetings, processes audio through isolated PulseAudio sinks, and provides a REST API for controlling recording sessions.
+TeamsMeetingRecorder is a Docker-based bot that automates Teams meeting participation and audio recording. It uses browser automation to join meetings, processes audio through isolated [PulseAudio](https://de.wikipedia.org/wiki/PulseAudio) sinks, and provides a REST API for controlling recording sessions.
 
 ## ✨ Features
 - **REST API**: Control bot via HTTP endpoints (FastAPI)
 - **Browser Automation**: Modern Playwright-based browser control
-- **Multi-Session Support**: Record multiple meetings simultaneously with isolated audio
-- **High-Quality Audio**: 48kHz stereo recording with session-specific PulseAudio sinks
+- **Multi-Session Support**: Record multiple meetings simultaneously
+- **High-Quality Audio**: 48kHz stereo recording
 - **Automatic Participant Detection**: Leaves meeting when alone
 - **Flexible Storage**: Save recordings locally or to MinIO/S3-compatible storage
 - **Webhook Notifications**: Get notified when recordings complete (local or S3 upload)
