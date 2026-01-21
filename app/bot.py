@@ -140,11 +140,11 @@ class TeamsBot:
         logger.info(f"Joining: {self.meeting_url}")
         await self.page.goto(self.meeting_url, wait_until="domcontentloaded")
 
-        # Check for App Opening
-        web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
-        if await web_btn.is_visible():
-            logger.info("Found web join button, clicking...")
-            await web_btn.click()
+        # # Check for App Opening
+        # web_btn = self.page.locator("text=/Continue on this browser|Join on the web instead/i").first
+        # if await web_btn.is_visible():
+        #     logger.info("Found web join button, clicking...")
+        #     await web_btn.click()
 
         # Fill name
         try:
