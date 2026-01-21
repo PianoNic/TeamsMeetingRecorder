@@ -1,20 +1,20 @@
-# Multi-stage Dockerfile for Teams Meeting Recorder with Playwright
-# Based on 2026 Docker best practices
-
+# ============================================================================
 # Stage 1: Base image with system dependencies
-FROM python:3.13-slim-bookworm AS base
+# ============================================================================
+FROM python:3.12-slim-bookworm AS base
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_PREFER_BINARY=1 \
     DEBIAN_FRONTEND=noninteractive \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install system dependencies for Playwright
+# Install build dependencies and core system packages (Layer 1 - changes rarely)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build tools (for numpy compilation)
+    # Build tools (needed for some packages)
     build-essential \
     python3-dev \
     # Core utilities
@@ -36,7 +36,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libportaudio2 \
     # Screenshot utility
     scrot \
-    # Playwright dependencies (minimal set)
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -54,26 +57,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwayland-client0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Stage 2: Python dependencies and Playwright browsers
+# Install fonts
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-freefont-ttf \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-tlwg-loma-otf \
+    fonts-unifont \
+    xfonts-scalable \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Stage 2: Python dependencies
+# ============================================================================
 FROM base AS dependencies
 
 WORKDIR /app
 
-# Copy requirements first (leverage Docker layer caching - 2026 best practice)
 COPY requirements.txt .
 
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers (only chromium for efficiency)
-# Using --only-shell flag for CI optimization as per 2026 best practices
 RUN playwright install chromium && \
     playwright install-deps chromium
 
+# ============================================================================
 # Stage 3: Final runtime image
+# ============================================================================
 FROM dependencies AS runtime
 
-# Create non-root user for security (2026 best practice)
+# Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash botuser && \
     mkdir -p /app /app/recordings && \
     chown -R botuser:botuser /app
@@ -91,14 +106,8 @@ USER botuser
 WORKDIR /app
 
 # Expose ports
-EXPOSE 8000 5900
-WORKDIR /app
-
-# Expose ports
 EXPOSE 8000
 
-# Health check (2026 best practice with proper timing)
+# Entrypoint and command
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-
-# Default command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
