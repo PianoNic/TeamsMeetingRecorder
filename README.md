@@ -1,5 +1,9 @@
 # <p align="center">TeamsMeetingRecorder</p>
 <p align="center">
+  <img src="./assets/TeamsRecorderTransparent.png" width="200" alt="TeamsMeetingRecorder Logo">
+</p>
+
+<p align="center">
   <strong>A simple bot that automatically joins Microsoft Teams meetings and records audio.</strong>
 </p> 
 
