@@ -17,7 +17,7 @@ from app.models import (
     BotStatus
 )
 from app.bot import TeamsBot
-from app.config import RECORDINGS_DIR, API_TITLE, API_VERSION
+from app.config import RECORDINGS_DIR, API_TITLE, API_VERSION, BROWSER_TIMEOUT, settings
 
 # Configure logging
 logging.basicConfig(
@@ -36,7 +36,9 @@ active_sessions: Dict[str, TeamsBot] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager."""
-    logger.info("Starting Teams Meeting Recorder API")
+    logger.info(f"Lobby timeout: {settings.teams_wait_for_lobby} minutes")
+    logger.info(f"Browser operation timeout: {BROWSER_TIMEOUT} seconds ({BROWSER_TIMEOUT / 60:.1f} minutes)")
+    logger.info("Bot will automatically leave when alone in the meeting")
     Path(RECORDINGS_DIR).mkdir(parents=True, exist_ok=True)
     yield
     logger.info("Shutting down - cleaning up sessions")
