@@ -1,9 +1,17 @@
 #!/bin/bash
 set -e
 
-echo "==================================="
-echo "Teams Meeting Recorder - Starting"
-echo "==================================="
+cat <<'EOF'
+
+ _____                      __  __           _   _               ____                         _
+|_   _|__  __ _ _ __ ___   |  \/  | ___  ___| |_(_)_ __   __ _  |  _ \ ___  ___ ___  _ __ __| | ___ _ __
+  | |/ _ \/ _` | '_ ` _ \  | |\/| |/ _ \/ _ \ __| | '_ \ / _` | | |_) / _ \/ __/ _ \| '__/ _` |/ _ \ '__|
+  | |  __/ (_| | | | | | | | |  | |  __/  __/ |_| | | | | (_| | |  _ <  __/ (_| (_) | | | (_| |  __/ |
+  |_|\___|\__,_|_| |_| |_| |_|  |_|\___|\___|\__|_|_| |_|\__, | |_| \_\___|\___\___/|_|  \__,_|\___|_|
+                                                          |___/
+                                                By PianoNic
+                                                
+EOF
 
 # Disable PC speaker beep
 echo "Disabling system beep..."
@@ -32,12 +40,8 @@ echo "Starting Fluxbox window manager..."
 fluxbox 2>/dev/null &
 sleep 1
 
-echo "==================================="
 echo "Services started successfully!"
-echo "==================================="
-echo "FastAPI: http://localhost:8000"
-echo "Swagger Docs: http://localhost:8000/docs"
-echo "==================================="
+echo ""
 
 # Execute the main command
 exec "$@"

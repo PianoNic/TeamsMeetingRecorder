@@ -71,6 +71,11 @@ services:
       - ./recordings:/app/recordings
     shm_size: '2gb'
     restart: unless-stopped
+    environment:
+      - TEAMS_WAIT_FOR_LOBBY=${TEAMS_WAIT_FOR_LOBBY:-30}
+      - DEBUG_SCREENSHOTS=${DEBUG_SCREENSHOTS:-false}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
@@ -79,13 +84,46 @@ services:
       start_period: 40s
 ```
 
-**2. Start it:**
+**2. (Optional) Create a `.env` file for configuration:**
+```env
+TEAMS_WAIT_FOR_LOBBY=10
+DEBUG_SCREENSHOTS=false
+STORAGE_BACKEND=local
+```
+
+**3. Start it:**
 ```bash
 docker compose up -d
 ```
 
-The API will be available at [http://localhost:8000](http://localhost:8000)  
+The API will be available at [http://localhost:8000](http://localhost:8000)
 Swagger docs at [http://localhost:8000/docs](http://localhost:8000/docs)
+
+## ⚙️ Configuration
+
+TeamsMeetingRecorder can be configured using environment variables. Create a `.env` file in your project directory or set them in your `compose.yaml`.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TEAMS_WAIT_FOR_LOBBY` | `30` | Waiting room timeout in minutes before bot stops |
+| `DEBUG_SCREENSHOTS` | `false` | Save screenshots during bot operation (set to `true` to enable) |
+| `STORAGE_BACKEND` | `local` | Storage backend: `local` or `minio` |
+| `MINIO_ENDPOINT` | - | MinIO server endpoint (e.g., `minio.example.com:9000`) |
+| `MINIO_ACCESS_KEY` | - | MinIO access key |
+| `MINIO_SECRET_KEY` | - | MinIO secret key |
+| `MINIO_BUCKET` | `recordings` | MinIO bucket name |
+| `MINIO_SECURE` | `true` | Use HTTPS for MinIO connection |
+| `WEBHOOK_URL` | - | Webhook URL to notify when recording completes (optional) |
+
+**Example `.env` file:**
+```env
+TEAMS_WAIT_FOR_LOBBY=10
+DEBUG_SCREENSHOTS=false
+STORAGE_BACKEND=local
+WEBHOOK_URL=https://your-api.example.com/webhook
+```
 
 ## 🚀 Usage
 
@@ -128,7 +166,7 @@ Store recordings in MinIO or any S3-compatible object storage.
 
 #### Option 1: Use External MinIO/S3 Service
 
-**1. Set environment variables:**
+**1. Create/Update `.env` file:**
 ```env
 STORAGE_BACKEND=minio
 MINIO_ENDPOINT=minio.example.com:9000
@@ -143,12 +181,15 @@ MINIO_SECURE=true
 services:
   teams-recorder:
     environment:
-      - STORAGE_BACKEND=minio
+      - TEAMS_WAIT_FOR_LOBBY=${TEAMS_WAIT_FOR_LOBBY:-30}
+      - DEBUG_SCREENSHOTS=${DEBUG_SCREENSHOTS:-false}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - MINIO_BUCKET=${MINIO_BUCKET}
-      - MINIO_SECURE=${MINIO_SECURE}
+      - MINIO_BUCKET=${MINIO_BUCKET:-recordings}
+      - MINIO_SECURE=${MINIO_SECURE:-true}
     # Remove the recordings volume mount if not needed
 ```
 
@@ -158,9 +199,14 @@ Use the included `minio.compose.yml` to run MinIO alongside the recorder:
 
 **1. Create `.env` file:**
 ```env
+TEAMS_WAIT_FOR_LOBBY=10
+DEBUG_SCREENSHOTS=false
+STORAGE_BACKEND=minio
+MINIO_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=recordings
+MINIO_SECURE=false
 ```
 
 **2. Start both services:**
@@ -187,18 +233,14 @@ TeamsMeetingRecorder can notify your application when a recording finishes (both
 
 ### Setup
 
-**1. Set the webhook URL in environment variables:**
+**1. Add webhook URL to `.env` file:**
 ```env
 WEBHOOK_URL=https://your-api.example.com/webhook
 ```
 
-**2. (Optional) Update `compose.yaml`:**
-```yaml
-services:
-  teams-recorder:
-    environment:
-      - WEBHOOK_URL=https://your-api.example.com/webhook
-```
+**2. The webhook URL is automatically picked up from environment variables in `compose.yaml`**
+
+The webhook environment variable is already included in the Docker Compose examples above. Leave `WEBHOOK_URL` empty or unset to disable webhooks.
 
 ### Webhook Payload
 
