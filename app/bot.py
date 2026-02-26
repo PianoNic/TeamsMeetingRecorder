@@ -185,6 +185,7 @@ class TeamsBot:
         except Exception as e:
             logger.info(f"Not admitted within {settings.teams_wait_for_lobby} minute")
             await self.stop()
+            return  # Do not continue to start recording; sink is already removed in cleanup
 
     async def _leave_meeting(self):
         """Leave the meeting."""
@@ -239,6 +240,9 @@ class TeamsBot:
 
             await self._setup_browser()
             await self._join_meeting()
+            # If not admitted, _join_meeting calls stop() and returns; do not start recording
+            if self.status != BotStatus.JOINING:
+                return
             self._start_audio_recording()
             self._monitoring_task = asyncio.create_task(self._monitor_presence())
             logger.info("Bot started")
