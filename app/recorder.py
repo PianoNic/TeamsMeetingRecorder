@@ -61,7 +61,11 @@ class AudioRecorder:
 
         logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
 
-        # Record audio
+        # Record audio - use monitor name explicitly; device=None + PULSE_SOURCE is unreliable
+        # when PortAudio uses the ALSA backend (e.g. in Docker), leading to "No such entity"
+        if not self.monitor_name:
+            raise ValueError("monitor_name is required for recording")
+
         with sf.SoundFile(
             self.output_file,
             mode='w',
@@ -77,9 +81,10 @@ class AudioRecorder:
                 if self.is_recording:
                     file.write(indata)
 
-            # Use device=None to let PulseAudio use PULSE_SOURCE environment variable
+            # Pass monitor by name so the correct PulseAudio source is used (ALSA backend
+            # does not reliably honor PULSE_SOURCE when device=None)
             with sd.InputStream(
-                device=None,
+                device=self.monitor_name,
                 channels=self.channels,
                 samplerate=self.sample_rate,
                 callback=callback
