@@ -1,12 +1,10 @@
-"""Audio recording module using sounddevice and PulseAudio."""
+"""Audio recording module using parec (PulseAudio) and soundfile."""
 
 import logging
-import os
+import subprocess
 import threading
-import time
 from datetime import datetime
 from typing import Optional
-import sounddevice as sd
 import soundfile as sf
 import numpy as np
 
@@ -33,67 +31,71 @@ class AudioRecorder:
         self.is_recording = False
         self.recording_thread: Optional[threading.Thread] = None
         self.start_time: Optional[datetime] = None
-        self.audio_data = []
+        self._parec_process: Optional[subprocess.Popen] = None
 
         logger.info(f"Audio recorder initialized: {output_file}")
 
-    def _log_available_devices(self):
-        """Log available audio devices for debugging."""
+    def _log_available_sources(self):
+        """Log available PulseAudio sources for debugging."""
         try:
-            devices = sd.query_devices()
-            msg = "Available audio devices:\n"
-            for idx, device in enumerate(devices):
-                msg += f"  [{idx}] {device['name']} - Inputs: {device['max_input_channels']}\n"
-            msg += f"Recording from: {self.monitor_name}"
-            logger.info(msg)
+            result = subprocess.run(
+                ['pactl', 'list', 'short', 'sources'],
+                capture_output=True, text=True
+            )
+            logger.info(f"Available PulseAudio sources:\n{result.stdout.strip()}")
+            logger.info(f"Recording from: {self.monitor_name}")
         except Exception as e:
-            logger.error(f"Error querying audio devices: {e}")
+            logger.error(f"Error querying PulseAudio sources: {e}")
 
     def _record_audio(self):
         """Internal method to record audio in a separate thread."""
-    
-        # Set PULSE_SOURCE environment variable to route audio from the session-specific monitor
-        os.environ["PULSE_SOURCE"] = self.monitor_name
-        logger.info(f"Recording from PulseAudio monitor: {self.monitor_name}")
-        
-        # Log available devices at debug level
-        self._log_available_devices()
-
-        logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
-
-        # Record audio - use monitor name explicitly; device=None + PULSE_SOURCE is unreliable
-        # when PortAudio uses the ALSA backend (e.g. in Docker), leading to "No such entity"
         if not self.monitor_name:
             raise ValueError("monitor_name is required for recording")
 
-        with sf.SoundFile(
-            self.output_file,
-            mode='w',
-            samplerate=self.sample_rate,
-            channels=self.channels,
-            subtype='PCM_24'
-        ) as file:
+        logger.info(f"Recording from PulseAudio monitor: {self.monitor_name}")
+        self._log_available_sources()
+        logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
 
-            # Use a callback to continuously record
-            def callback(indata, frames, time_info, status):
-                if status:
-                    logger.warning(f"Audio callback status: {status}")
-                if self.is_recording:
-                    file.write(indata)
+        # parec reads directly from the named PulseAudio source — no shared env vars,
+        # so multiple concurrent sessions each get their own isolated subprocess.
+        cmd = [
+            'parec',
+            f'--device={self.monitor_name}',
+            '--format=s16le',
+            f'--rate={self.sample_rate}',
+            f'--channels={self.channels}',
+        ]
 
-            # Pass monitor by name so the correct PulseAudio source is used (ALSA backend
-            # does not reliably honor PULSE_SOURCE when device=None)
-            with sd.InputStream(
-                device=self.monitor_name,
-                channels=self.channels,
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        self._parec_process = process
+
+        logger.info("Audio stream started successfully")
+
+        bytes_per_sample = 2  # s16le = 2 bytes
+        chunk_frames = 4096
+        chunk_bytes = chunk_frames * self.channels * bytes_per_sample
+
+        try:
+            with sf.SoundFile(
+                self.output_file,
+                mode='w',
                 samplerate=self.sample_rate,
-                callback=callback
-            ):
-                logger.info("Audio stream started successfully")
-
-                # Record until stopped
+                channels=self.channels,
+                subtype='PCM_16'
+            ) as wav_file:
                 while self.is_recording:
-                    time.sleep(0.1)
+                    data = process.stdout.read(chunk_bytes)
+                    if not data:
+                        break
+                    samples = np.frombuffer(data, dtype='int16').reshape(-1, self.channels)
+                    wav_file.write(samples)
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            self._parec_process = None
 
         logger.info(f"Recording saved to: {self.output_file}")
 
@@ -120,7 +122,10 @@ class AudioRecorder:
         logger.info("Stopping audio recording")
         self.is_recording = False
 
-        # Wait for recording thread to finish
+        # Terminate parec so the recording thread's stdout.read() unblocks immediately.
+        if self._parec_process:
+            self._parec_process.terminate()
+
         if self.recording_thread:
             self.recording_thread.join(timeout=5)
 
@@ -139,7 +144,6 @@ class AudioRecorder:
         if self.is_recording:
             return (datetime.utcnow() - self.start_time).total_seconds()
         else:
-            # Return total duration from the file
             try:
                 info = sf.info(self.output_file)
                 return info.duration
@@ -158,12 +162,9 @@ def setup_virtual_audio_sink():
 
     This should be called during container initialization.
     """
-    import subprocess
-
     try:
         logger.info("Setting up PulseAudio virtual sink")
 
-        # Load null sink module
         cmd = [
             "pactl", "load-module", "module-null-sink",
             f"sink_name={PULSEAUDIO_SINK_NAME}",
@@ -186,22 +187,13 @@ def setup_virtual_audio_sink():
 
 
 def list_audio_devices():
-    """List all available audio devices (for debugging)."""
+    """List all available PulseAudio sources (for debugging)."""
     try:
-        print("\n=== Available Audio Devices ===")
-        devices = sd.query_devices()
-        for idx, device in enumerate(devices):
-            device_type = []
-            if device['max_input_channels'] > 0:
-                device_type.append('INPUT')
-            if device['max_output_channels'] > 0:
-                device_type.append('OUTPUT')
-
-            print(f"[{idx}] {device['name']}")
-            print(f"    Type: {', '.join(device_type)}")
-            print(f"    Channels: IN={device['max_input_channels']}, OUT={device['max_output_channels']}")
-            print(f"    Sample Rate: {device['default_samplerate']} Hz")
-            print()
-
+        print("\n=== Available PulseAudio Sources ===")
+        result = subprocess.run(
+            ['pactl', 'list', 'short', 'sources'],
+            capture_output=True, text=True
+        )
+        print(result.stdout)
     except Exception as e:
-        print(f"Error listing devices: {e}")
+        print(f"Error listing sources: {e}")
