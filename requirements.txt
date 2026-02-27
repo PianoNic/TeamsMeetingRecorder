@@ -6,7 +6,6 @@ playwright==1.48.0
 python-dotenv==1.0.1
 aiofiles==24.1.0
 psutil==6.1.0
-sounddevice==0.4.6
 soundfile==0.12.1
 numpy==1.26.3
 minio==7.2.10
