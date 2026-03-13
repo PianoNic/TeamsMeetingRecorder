@@ -71,12 +71,20 @@ async def root():
 @app.post("/join", response_model=RecordingResponse)
 async def join_meeting(request: JoinMeetingRequest):
     """Join a Teams meeting and start recording."""
-    def remove_session(bot: TeamsBot):
-        active_sessions.pop(bot.session_id, None)
-
-    bot = TeamsBot(meeting_url=request.meeting_url, display_name=request.display_name, on_stop=remove_session)
+    bot = TeamsBot(meeting_url=request.meeting_url, display_name=request.display_name)
     active_sessions[bot.session_id] = bot
-    asyncio.create_task(bot.start())
+
+    async def run_and_cleanup():
+        try:
+            await bot.start()
+            if bot._monitoring_task:
+                await bot._monitoring_task
+        except Exception:
+            pass
+        finally:
+            active_sessions.pop(bot.session_id, None)
+
+    asyncio.create_task(run_and_cleanup())
     
     return RecordingResponse(
         success=True,
@@ -97,7 +105,7 @@ async def stop_recording(session_id: str):
     if session_id not in active_sessions:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    bot = active_sessions[session_id]
+    bot = active_sessions.pop(session_id)
     await bot.stop()
 
     return RecordingResponse(
