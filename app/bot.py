@@ -7,7 +7,7 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from playwright.async_api import async_playwright, Browser, Page, BrowserContext, Playwright
 
 from app.config import settings, DISPLAY_NUMBER, DISPLAY_WIDTH, DISPLAY_HEIGHT, BROWSER_TIMEOUT, RECORDINGS_DIR
@@ -26,7 +26,8 @@ class TeamsBot:
     def __init__(
         self,
         meeting_url: str,
-        display_name: str
+        display_name: str,
+        on_stop: Optional[Callable[["TeamsBot"], None]] = None
     ):
         """
         Initialize the Teams bot.
@@ -34,7 +35,9 @@ class TeamsBot:
         Args:
             meeting_url: Microsoft Teams meeting URL
             display_name: Display name to use in the meeting
+            on_stop: Optional callback invoked when the bot finishes
         """
+        self.on_stop = on_stop
         self.session_id = str(uuid.uuid4())
         self.meeting_url = meeting_url
         self.display_name = display_name
@@ -267,6 +270,8 @@ class TeamsBot:
                 except Exception as webhook_error:
                     logger.error(f"Error sending failure webhook: {webhook_error}")
 
+            if self.on_stop:
+                self.on_stop(self)
             await self.cleanup()
             raise
 
@@ -328,6 +333,8 @@ class TeamsBot:
                 logger.error(f"Error sending webhook: {e}")
 
         self.status = BotStatus.STOPPED
+        if self.on_stop:
+            self.on_stop(self)
         await self.cleanup()
 
     async def cleanup(self):
