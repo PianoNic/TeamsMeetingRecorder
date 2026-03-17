@@ -73,7 +73,18 @@ async def join_meeting(request: JoinMeetingRequest):
     """Join a Teams meeting and start recording."""
     bot = TeamsBot(meeting_url=request.meeting_url, display_name=request.display_name)
     active_sessions[bot.session_id] = bot
-    asyncio.create_task(bot.start())
+
+    async def run_and_cleanup():
+        try:
+            await bot.start()
+            if bot._monitoring_task:
+                await bot._monitoring_task
+        except Exception:
+            pass
+        finally:
+            active_sessions.pop(bot.session_id, None)
+
+    asyncio.create_task(run_and_cleanup())
     
     return RecordingResponse(
         success=True,
