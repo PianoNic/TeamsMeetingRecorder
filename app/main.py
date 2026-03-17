@@ -136,7 +136,8 @@ async def list_sessions():
         "session_id": sid,
         "display_name": bot.display_name,
         "status": bot.status.value,
-        "uptime_seconds": bot.get_uptime()
+        "uptime_seconds": bot.get_uptime(),
+        "started_at": bot.started_at.isoformat() if bot.started_at else None
     } for sid, bot in active_sessions.items()]
 
 
