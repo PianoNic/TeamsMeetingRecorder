@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Debug screenshots
     debug_screenshots: bool = False
 
-    # Storage backend: 'local' or 'minio'
+    # Storage backend: 'local', 'minio', or 'azure'
     storage_backend: str = "local"
 
     # MinIO settings (only used when storage_backend='minio')
@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     minio_secret_key: Optional[str] = None
     minio_bucket: str = "recordings"
     minio_secure: bool = True
+
+    # Azure Blob settings (only used when storage_backend='azure')
+    azure_storage_connection_string: Optional[str] = None
+    azure_storage_container: str = "meeting-recordings"
+    # Optional public base for webhook file_location URLs (e.g. Azurite http://127.0.0.1:410000/devstoreaccount1)
+    azure_storage_public_endpoint: Optional[str] = None
 
     # Webhook settings (optional)
     # Called when a recording finishes saving (both local and MinIO)

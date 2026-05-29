@@ -27,7 +27,7 @@ class WebhookPayload:
         Args:
             session_id: Unique session identifier
             meeting_url: Teams meeting URL
-            file_location: Local file path (for local storage) or MinIO URL (for MinIO storage)
+            file_location: Local path, MinIO URL, or Azure blob path/URL
             started_at: When recording started
             stopped_at: When recording stopped
         """

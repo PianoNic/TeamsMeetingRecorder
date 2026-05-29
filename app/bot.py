@@ -220,7 +220,7 @@ class TeamsBot:
         filename = f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
         self.recording_file = str(Path(RECORDINGS_DIR) / filename)
         
-        # Store the storage path for later upload (if using MinIO)
+        # Store the object key for later upload (remote backends)
         self.storage_path = storage.get_file_path(self.session_id, filename)
         
         self.audio_recorder = AudioRecorder(
@@ -289,31 +289,26 @@ class TeamsBot:
             self.audio_recorder.stop()
             logger.info("Recording stopped")
 
-            # Upload to storage if using MinIO
-            if settings.storage_backend == "minio" and self.recording_file and self.storage_path:
+            # Upload to remote storage (MinIO or Azure Blob)
+            if storage.uses_remote_storage() and self.recording_file and self.storage_path:
                 logger.info(f"Uploading recording to storage: {self.storage_path}")
                 success = storage.upload_file(self.recording_file, self.storage_path)
                 if success:
-                    logger.info(f"Successfully uploaded to storage")
-                    # Clean up local file after successful upload
+                    logger.info("Successfully uploaded to storage")
                     try:
                         Path(self.recording_file).unlink(missing_ok=True)
                         logger.info(f"Removed local temporary file: {self.recording_file}")
                     except Exception as e:
                         logger.warning(f"Failed to remove local file: {e}")
                 else:
-                    logger.error(f"Failed to upload to storage, keeping local file")
+                    logger.error("Failed to upload to storage, keeping local file")
 
         # Send webhook notification if configured
         if settings.webhook_url and self.recording_file and self.started_at and self.stopped_at:
             try:
-                # Determine file location: MinIO URL or local path
-                if settings.storage_backend == "minio" and self.storage_path:
-                    # Construct MinIO URL
-                    protocol = "https" if settings.minio_secure else "http"
-                    file_location = f"{protocol}://{settings.minio_endpoint}/{settings.minio_bucket}/{self.storage_path}"
+                if storage.uses_remote_storage() and self.storage_path:
+                    file_location = storage.get_webhook_file_location(self.storage_path)
                 else:
-                    # Use local file path
                     file_location = self.recording_file
 
                 webhook_payload = WebhookPayload(
