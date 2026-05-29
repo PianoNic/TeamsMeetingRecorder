@@ -109,12 +109,15 @@ TeamsMeetingRecorder can be configured using environment variables. Create a `.e
 |----------|---------|-------------|
 | `TEAMS_WAIT_FOR_LOBBY` | `30` | Waiting room timeout in minutes before bot stops |
 | `DEBUG_SCREENSHOTS` | `false` | Save screenshots during bot operation (set to `true` to enable) |
-| `STORAGE_BACKEND` | `local` | Storage backend: `local` or `minio` |
+| `STORAGE_BACKEND` | `local` | Storage backend: `local`, `minio`, or `azure` |
 | `MINIO_ENDPOINT` | - | MinIO server endpoint (e.g., `minio.example.com:9000`) |
 | `MINIO_ACCESS_KEY` | - | MinIO access key |
 | `MINIO_SECRET_KEY` | - | MinIO secret key |
 | `MINIO_BUCKET` | `recordings` | MinIO bucket name |
 | `MINIO_SECURE` | `true` | Use HTTPS for MinIO connection |
+| `AZURE_STORAGE_CONNECTION_STRING` | - | Azure / Azurite connection string (`STORAGE_BACKEND=azure`) |
+| `AZURE_STORAGE_CONTAINER` | `meeting-recordings` | Blob container name |
+| `AZURE_STORAGE_PUBLIC_ENDPOINT` | - | Optional public blob base URL for webhook `file_location` |
 | `WEBHOOK_URL` | - | Webhook URL to notify when recording completes (optional) |
 
 **Example `.env` file:**
@@ -154,12 +157,30 @@ curl http://localhost:8000/sessions
 
 ## 🗄️ Storage Configuration
 
-TeamsMeetingRecorder supports two storage backends:
+TeamsMeetingRecorder supports three storage backends:
 
 ### Local Storage (Default)
 Recordings are saved to the local filesystem (`/app/recordings` in container, mounted as `./recordings` on host).
 
 No additional configuration needed.
+
+### Azure Blob Storage (Summarly / Azurite)
+Store recordings in Azure Blob Storage or the [Azurite](https://github.com/Azure/Azurite) emulator.
+
+**Quick start with Azurite:**
+```bash
+docker compose -f azurite.compose.yaml up -d
+```
+
+**`.env` example:**
+```env
+STORAGE_BACKEND=azure
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:410000/devstoreaccount1;
+AZURE_STORAGE_CONTAINER=meeting-recordings
+WEBHOOK_URL=https://your-api.example.com/api/meetings/webhook/recording
+```
+
+Webhook `file_location` is sent as `meeting-recordings/{session}/{file}.wav` (or a public HTTP URL when `AZURE_STORAGE_PUBLIC_ENDPOINT` is set). Summarly downloads via the same blob connection string.
 
 ### MinIO/S3 Storage
 Store recordings in MinIO or any S3-compatible object storage.
