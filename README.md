@@ -119,6 +119,7 @@ TeamsMeetingRecorder can be configured using environment variables. Create a `.e
 | `AZURE_STORAGE_CONTAINER` | `meeting-recordings` | Blob container name |
 | `AZURE_STORAGE_PUBLIC_ENDPOINT` | - | Optional public blob base URL for webhook `file_location` |
 | `WEBHOOK_URL` | - | Webhook URL to notify when recording completes (optional) |
+| `BOT_ACCESS_TOKEN` | - | Optional shared secret protecting all endpoints except `/` (the health probe). When set, every request must send `Authorization: Bearer <token>` or `X-API-Key: <token>` (401 otherwise). Unset = open. |
 
 **Example `.env` file:**
 ```env
