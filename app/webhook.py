@@ -7,6 +7,8 @@ from typing import Optional
 from datetime import datetime
 import aiohttp
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,12 +68,16 @@ async def send_webhook(webhook_url: str, payload: WebhookPayload) -> bool:
     try:
         logger.info(f"Sending webhook notification to: {webhook_url}")
 
+        headers = {"Content-Type": "application/json"}
+        if settings.webhook_secret:
+            headers["X-Webhook-Secret"] = settings.webhook_secret
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 webhook_url,
                 json=payload.to_dict(),
                 timeout=aiohttp.ClientTimeout(total=30),
-                headers={"Content-Type": "application/json"}
+                headers=headers
             ) as response:
                 if response.status in (200, 201, 202, 204):
                     logger.info(f"Webhook sent successfully (status: {response.status})")
