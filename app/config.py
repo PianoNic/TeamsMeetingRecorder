@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Called when a recording finishes saving (both local and MinIO)
     webhook_url: Optional[str] = None
 
+    # Optional shared secret protecting all endpoints except "/" (the health
+    # probe). Set via env BOT_ACCESS_TOKEN. When set, every request must send
+    # `Authorization: Bearer <token>` or `X-API-Key: <token>` (401 otherwise).
+    # Leave unset to keep the recorder open (no inbound auth).
+    bot_access_token: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

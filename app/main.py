@@ -1,13 +1,14 @@
 """FastAPI application for Teams Meeting Recorder."""
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
+import hmac
 import uvicorn
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from app.models import (
     JoinMeetingRequest,
@@ -55,6 +56,36 @@ app = FastAPI(
     description="API for recording Microsoft Teams meetings using a bot",
     lifespan=lifespan
 )
+
+
+# Paths reachable without the access token. "/" is the container health probe.
+_OPEN_PATHS = {"/"}
+
+
+def _extract_token(request: Request) -> Optional[str]:
+    """Pull the bearer token or X-API-Key from the request headers."""
+    auth = request.headers.get("authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth[len("bearer "):].strip()
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        return api_key.strip()
+    return None
+
+
+@app.middleware("http")
+async def access_token_guard(request: Request, call_next):
+    """Optional inbound auth: when BOT_ACCESS_TOKEN is set, every endpoint
+    except the open paths requires it. No-op when the token is unset."""
+    expected = settings.bot_access_token
+    if expected and request.url.path not in _OPEN_PATHS:
+        provided = _extract_token(request)
+        if not provided or not hmac.compare_digest(provided, expected):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Unauthorized"},
+            )
+    return await call_next(request)
 
 
 @app.get("/")
