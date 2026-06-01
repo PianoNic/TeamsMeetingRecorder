@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Called when a recording finishes saving (both local and MinIO)
     webhook_url: Optional[str] = None
 
+    # Optional shared secret sent as the X-Webhook-Secret header on webhook POSTs;
+    # the receiver (Summarly API) verifies it against its Webhook:Secret. Set via
+    # env WEBHOOK_SECRET. Leave unset to send no signature.
+    webhook_secret: Optional[str] = None
+
     # Optional shared secret protecting all endpoints except "/" (the health
     # probe). Set via env BOT_ACCESS_TOKEN. When set, every request must send
     # `Authorization: Bearer <token>` or `X-API-Key: <token>` (401 otherwise).
