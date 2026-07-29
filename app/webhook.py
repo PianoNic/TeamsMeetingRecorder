@@ -87,8 +87,8 @@ async def send_webhook(webhook_url: str, payload: WebhookPayload) -> bool:
                     try:
                         response_text = await response.text()
                         logger.warning(f"Webhook response: {response_text}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Could not read webhook response body: {e}")
                     return False
 
     except asyncio.TimeoutError:
@@ -97,26 +97,3 @@ async def send_webhook(webhook_url: str, payload: WebhookPayload) -> bool:
     except Exception as e:
         logger.error(f"Failed to send webhook to {webhook_url}: {e}")
         return False
-
-
-async def send_webhook_async(webhook_url: str, payload: WebhookPayload):
-    """
-    Fire-and-forget webhook send. Does not block the main application.
-
-    Args:
-        webhook_url: URL to send the webhook to
-        payload: WebhookPayload instance to send
-    """
-    if not webhook_url:
-        return
-
-    try:
-        # Send webhook in background without blocking
-        await asyncio.wait_for(
-            send_webhook(webhook_url, payload),
-            timeout=30
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"Webhook send timed out to: {webhook_url}")
-    except Exception as e:
-        logger.warning(f"Error in webhook background task: {e}")

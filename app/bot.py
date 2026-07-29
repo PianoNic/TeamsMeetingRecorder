@@ -7,15 +7,14 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-from playwright.async_api import async_playwright, Browser, Page, BrowserContext, Playwright
+from typing import Callable, Optional
+from playwright.async_api import async_playwright, Browser, Page, Playwright
 
 from app.config import settings, DISPLAY_NUMBER, DISPLAY_WIDTH, DISPLAY_HEIGHT, BROWSER_TIMEOUT, RECORDINGS_DIR
 from app.models import BotStatus
 from app.recorder import AudioRecorder
-from app.storage import storage
-from app.utils import save_screenshot
-from app.webhook import send_webhook_async, WebhookPayload
+from app.storage import get_storage
+from app.webhook import send_webhook, WebhookPayload
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +54,15 @@ class TeamsBot:
         self.sink_module_id: Optional[str] = None
         self._monitoring_task: Optional[asyncio.Task] = None
 
+        # Invoked once with this session's id when the bot reaches a terminal
+        # state, so the API can retire it from the active session list.
+        self.on_stop: Optional[Callable[[str], None]] = None
+        self._on_stop_fired = False
+
         logger.info(f"Initialized bot with session ID: {self.session_id}")
 
     def _create_audio_sink(self) -> tuple[str, str, str]:
         """Create a dedicated virtual audio sink for this session."""
-        import time
         sink_name = f"teams_sink_{self.session_id[:8]}"
         monitor_name = f"{sink_name}.monitor"
         
@@ -93,16 +96,22 @@ class TeamsBot:
         # Create dedicated audio sink FIRST
         self.sink_name, self.monitor_name, self.sink_module_id = self._create_audio_sink()
 
-        # Set environment variables to force this browser to use the dedicated sink
-        os.environ["DISPLAY"] = f":{DISPLAY_NUMBER}"
-        os.environ["PULSE_SINK"] = self.sink_name
-        os.environ["PULSE_SOURCE"] = self.monitor_name
-        
+        # Pin the sink on the launched process only. Mutating os.environ here would
+        # race: with two sessions starting at once the second overwrites the value
+        # before the first chromium has forked, and both meetings land in one sink.
+        browser_env = {
+            **os.environ,
+            "DISPLAY": f":{DISPLAY_NUMBER}",
+            "PULSE_SINK": self.sink_name,
+            "PULSE_SOURCE": self.monitor_name,
+        }
+
         logger.info(f"Browser will use PULSE_SINK={self.sink_name}")
-        
+
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
             headless=False,
+            env=browser_env,
             args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
@@ -151,8 +160,8 @@ class TeamsBot:
             name_input = self.page.locator("input[data-tid='prejoin-display-name-input']").first
             await name_input.wait_for(state="visible")
             await name_input.fill(self.display_name)
-        except:
-            logger.error(f"Couldn't fill in Username")
+        except Exception as e:
+            logger.error(f"Couldn't fill in Username: {e}")
 
         # Turn off camera and mic if they're on
         try:
@@ -161,19 +170,26 @@ class TeamsBot:
                 if await toggle.is_visible() and await toggle.is_checked():
                     await toggle.click()
                     logger.info(f"Turned off {name}")
-        except:
-            logger.error(f"Problem toggling camera or mic")
+        except Exception as e:
+            logger.error(f"Problem toggling camera or mic: {e}")
 
-        # Log selected audio devices
-        speaker_label = await self.page.locator("button[data-tid='selected-speaker-display'] span.fui-StyledText").first.inner_text()
-        logger.info(f"Selected speaker: {speaker_label}")
+        # Log selected audio device. Diagnostics only, so it gets a short explicit
+        # timeout - the page default is BROWSER_TIMEOUT (24 min), long enough to
+        # miss the meeting if Teams ever renames this selector.
+        try:
+            speaker_label = await self.page.locator(
+                "button[data-tid='selected-speaker-display'] span.fui-StyledText"
+            ).first.inner_text(timeout=5000)
+            logger.info(f"Selected speaker: {speaker_label}")
+        except Exception as e:
+            logger.warning(f"Could not read selected speaker: {e}")
 
         # Join meeting
         try:
             await self.page.locator("button[data-tid='prejoin-join-button']").first.click()
             logger.info("Request Joining meeting...")
-        except:
-            logger.error(f"Problem clicking on join")
+        except Exception as e:
+            logger.error(f"Problem clicking on join: {e}")
 
         # Check if admitted
         try:
@@ -195,22 +211,115 @@ class TeamsBot:
             logger.info("Left meeting")
             await self.page.wait_for_timeout(2000)
 
+    @staticmethod
+    def _parse_participant_count(badge_text: str) -> int:
+        """Read a participant count off the roster badge.
+
+        Teams renders overflow counts as '99+' and may group thousands, so strip
+        everything that is not a digit rather than trusting int() with the raw text.
+        """
+        digits = "".join(c for c in badge_text if c.isdigit())
+        return int(digits) if digits else 0
+
+    # Consecutive one-second polls that must agree before the bot acts on them.
+    # A single reading is never enough: the toolbar re-renders, and the roster
+    # badge is missing entirely for the first moments after being admitted.
+    ALONE_POLLS_BEFORE_LEAVING = 5
+
+    # Every Playwright call in the monitor uses this instead of the page default
+    # (BROWSER_TIMEOUT, 24 minutes). A wedged page must not stall the monitor:
+    # that has been observed leaving a bot recording with no supervision at all.
+    MONITOR_QUERY_TIMEOUT_MS = 5000
+
+    async def _still_in_meeting(self) -> Optional[bool]:
+        """Is the bot still in the call? None when it cannot be determined.
+
+        The hangup button is the reliable signal. Participant counts are not:
+        Teams restricts the roster for unverified anonymous guests, so the bot
+        frequently sees only itself listed and the toolbar badge is often never
+        rendered at all.
+        """
+        try:
+            hangup = self.page.locator("button[id='hangup-button']").first
+            return await hangup.is_visible(timeout=self.MONITOR_QUERY_TIMEOUT_MS)
+        except Exception as e:
+            logger.warning(f"Could not read call state: {e}")
+            return None
+
+    # Anonymous joins usually land in Teams' "light meetings" client, which has no
+    # participant badge at all - it shows this instead while the bot is the only
+    # one left. The bot forces Accept-Language en-US, so the string is stable.
+    ALONE_TEXT = "Waiting for others to join"
+
+    async def _read_participant_count(self) -> Optional[int]:
+        """Participants reported by the toolbar badge, or None when unavailable.
+
+        Only present in the full web client; the light client has no badge.
+        """
+        try:
+            badge = self.page.locator("button[id='roster-button'] span[data-tid='toolbar-item-badge']").first
+            if await badge.is_visible(timeout=self.MONITOR_QUERY_TIMEOUT_MS):
+                raw = await badge.inner_text(timeout=self.MONITOR_QUERY_TIMEOUT_MS)
+                return self._parse_participant_count(raw)
+        except Exception as e:
+            logger.debug(f"Roster badge unreadable: {e}")
+        return None
+
+    async def _looks_alone(self) -> Optional[bool]:
+        """Is the bot the only one left? None when it cannot be determined."""
+        try:
+            waiting = self.page.get_by_text(self.ALONE_TEXT, exact=False).first
+            if await waiting.is_visible(timeout=self.MONITOR_QUERY_TIMEOUT_MS):
+                return True
+            text_readable = True
+        except Exception as e:
+            logger.debug(f"Alone-text unreadable: {e}")
+            text_readable = False
+
+        count = await self._read_participant_count()
+        if count is not None:
+            return count == 0
+
+        # The light client reliably shows ALONE_TEXT when alone, so a successful
+        # read with no such text means company is present.
+        return False if text_readable else None
+
     async def _monitor_presence(self):
-        """Monitor participant count."""
-        logger.info("Monitor for loneliness")
+        """Stop recording once the meeting is over or the bot is left alone."""
+        logger.info("Monitoring call state")
+        gone_polls = 0
+        alone_polls = 0
+        polls = 0
+
         while self.status == BotStatus.RECORDING:
-            badge = self.page.locator("button[id='roster-button'] span[data-tid='toolbar-item-badge']")
+            polls += 1
 
-            if await badge.is_visible():
-                badge_text = await badge.inner_text()
-                count = int(badge_text)
+            # Catches the meeting being ended for us, or the bot being removed.
+            in_call = await self._still_in_meeting()
+            if in_call is False:
+                gone_polls += 1
+                if gone_polls >= self.ALONE_POLLS_BEFORE_LEAVING:
+                    logger.info("No longer in the call, stopping")
+                    await self.stop()
+                    break
             else:
-                count = 0
+                gone_polls = 0
 
-            if count == 0:
-                logger.info("Alone in meeting or kicked, leaving")
-                await self.stop()
-                break
+            # Secondary: Teams leaves a lone participant sitting in the meeting
+            # rather than ejecting them, so the call-state check above never
+            # fires for "everyone else hung up". Unknown is not alone.
+            alone = await self._looks_alone()
+            if alone is True:
+                alone_polls += 1
+                if alone_polls >= self.ALONE_POLLS_BEFORE_LEAVING:
+                    logger.info("Alone in meeting or kicked, leaving")
+                    await self.stop()
+                    break
+            elif alone is False:
+                alone_polls = 0
+
+            if polls <= 3 or polls % 120 == 0:
+                logger.info(f"Call state poll {polls}: in_call={in_call} alone={alone}")
 
             await asyncio.sleep(1)
 
@@ -221,7 +330,7 @@ class TeamsBot:
         self.recording_file = str(Path(RECORDINGS_DIR) / filename)
         
         # Store the object key for later upload (remote backends)
-        self.storage_path = storage.get_file_path(self.session_id, filename)
+        self.storage_path = get_storage().get_file_path(self.session_id, filename)
         
         self.audio_recorder = AudioRecorder(
             output_file=self.recording_file,
@@ -249,7 +358,7 @@ class TeamsBot:
 
         except Exception as e:
             logger.error(f"Start failed: {e}")
-            self.status = BotStatus.FAILED
+            self.status = BotStatus.ERROR
             self.error_message = str(e)
             self.stopped_at = datetime.now()
 
@@ -263,7 +372,7 @@ class TeamsBot:
                         started_at=self.started_at,
                         stopped_at=self.stopped_at
                     )
-                    await send_webhook_async(settings.webhook_url, webhook_payload)
+                    await send_webhook(settings.webhook_url, webhook_payload)
                 except Exception as webhook_error:
                     logger.error(f"Error sending failure webhook: {webhook_error}")
 
@@ -290,6 +399,7 @@ class TeamsBot:
             logger.info("Recording stopped")
 
             # Upload to remote storage (MinIO or Azure Blob)
+            storage = get_storage()
             if storage.uses_remote_storage() and self.recording_file and self.storage_path:
                 logger.info(f"Uploading recording to storage: {self.storage_path}")
                 success = storage.upload_file(self.recording_file, self.storage_path)
@@ -306,6 +416,7 @@ class TeamsBot:
         # Send webhook notification if configured
         if settings.webhook_url and self.recording_file and self.started_at and self.stopped_at:
             try:
+                storage = get_storage()
                 if storage.uses_remote_storage() and self.storage_path:
                     file_location = storage.get_webhook_file_location(self.storage_path)
                 else:
@@ -318,7 +429,7 @@ class TeamsBot:
                     started_at=self.started_at,
                     stopped_at=self.stopped_at
                 )
-                await send_webhook_async(settings.webhook_url, webhook_payload)
+                await send_webhook(settings.webhook_url, webhook_payload)
             except Exception as e:
                 logger.error(f"Error sending webhook: {e}")
 
@@ -335,20 +446,20 @@ class TeamsBot:
         if self.page:
             try:
                 await self.page.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing page: {e}")
 
         if self.browser:
             try:
                 await self.browser.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing browser: {e}")
 
         if self.playwright:
             try:
                 await self.playwright.stop()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error stopping playwright: {e}")
 
         # Remove the audio sink
         if self.sink_module_id:
@@ -358,8 +469,17 @@ class TeamsBot:
             except Exception as e:
                 logger.error(f"Error removing audio sink: {e}")
 
-        self.status = BotStatus.STOPPED
+        if self.status != BotStatus.ERROR:
+            self.status = BotStatus.STOPPED
         logger.info(f"Cleanup complete for {self.session_id}")
+
+        # Terminal state reached - let the API retire this session.
+        if self.on_stop and not self._on_stop_fired:
+            self._on_stop_fired = True
+            try:
+                self.on_stop(self.session_id)
+            except Exception as e:
+                logger.error(f"on_stop callback failed: {e}")
 
     def get_uptime(self) -> Optional[float]:
         """Get the uptime in seconds since bot started."""

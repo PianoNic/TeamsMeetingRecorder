@@ -21,9 +21,8 @@ xset -b 2>/dev/null || true
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 || true
 
-# Create virtual audio sink
-echo "Setting up virtual audio sink..."
-pactl load-module module-null-sink sink_name=teams_virtual_sink sink_properties=device.description="Teams_Virtual_Sink" || true
+# Each recording session creates and tears down its own null sink, so no
+# shared sink is set up here.
 
 # List audio devices for debugging
 echo "Available audio devices:"

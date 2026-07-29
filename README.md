@@ -73,7 +73,6 @@ services:
     restart: unless-stopped
     environment:
       - TEAMS_WAIT_FOR_LOBBY=${TEAMS_WAIT_FOR_LOBBY:-30}
-      - DEBUG_SCREENSHOTS=${DEBUG_SCREENSHOTS:-false}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - WEBHOOK_URL=${WEBHOOK_URL:-}
     healthcheck:
@@ -87,7 +86,6 @@ services:
 **2. (Optional) Create a `.env` file for configuration:**
 ```env
 TEAMS_WAIT_FOR_LOBBY=10
-DEBUG_SCREENSHOTS=false
 STORAGE_BACKEND=local
 ```
 
@@ -108,7 +106,6 @@ TeamsMeetingRecorder can be configured using environment variables. Create a `.e
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TEAMS_WAIT_FOR_LOBBY` | `30` | Waiting room timeout in minutes before bot stops |
-| `DEBUG_SCREENSHOTS` | `false` | Save screenshots during bot operation (set to `true` to enable) |
 | `STORAGE_BACKEND` | `local` | Storage backend: `local`, `minio`, or `azure` |
 | `MINIO_ENDPOINT` | - | MinIO server endpoint (e.g., `minio.example.com:9000`) |
 | `MINIO_ACCESS_KEY` | - | MinIO access key |
@@ -125,7 +122,6 @@ TeamsMeetingRecorder can be configured using environment variables. Create a `.e
 **Example `.env` file:**
 ```env
 TEAMS_WAIT_FOR_LOBBY=10
-DEBUG_SCREENSHOTS=false
 STORAGE_BACKEND=local
 WEBHOOK_URL=https://your-api.example.com/webhook
 ```
@@ -166,7 +162,7 @@ Recordings are saved to the local filesystem (`/app/recordings` in container, mo
 
 No additional configuration needed.
 
-### Azure Blob Storage (Summarly / Azurite)
+### Azure Blob Storage (Azurite)
 Store recordings in Azure Blob Storage or the [Azurite](https://github.com/Azure/Azurite) emulator.
 
 **Quick start with Azurite:**
@@ -182,7 +178,7 @@ AZURE_STORAGE_CONTAINER=meeting-recordings
 WEBHOOK_URL=https://your-api.example.com/api/meetings/webhook/recording
 ```
 
-Webhook `file_location` is sent as `meeting-recordings/{session}/{file}.wav` (or a public HTTP URL when `AZURE_STORAGE_PUBLIC_ENDPOINT` is set). Summarly downloads via the same blob connection string.
+Webhook `file_location` is sent as `meeting-recordings/{session}/{file}.wav` (or a public HTTP URL when `AZURE_STORAGE_PUBLIC_ENDPOINT` is set). The receiver downloads via the same blob connection string.
 
 ### MinIO/S3 Storage
 Store recordings in MinIO or any S3-compatible object storage.
@@ -205,7 +201,6 @@ services:
   teams-recorder:
     environment:
       - TEAMS_WAIT_FOR_LOBBY=${TEAMS_WAIT_FOR_LOBBY:-30}
-      - DEBUG_SCREENSHOTS=${DEBUG_SCREENSHOTS:-false}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - WEBHOOK_URL=${WEBHOOK_URL:-}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
@@ -223,7 +218,6 @@ Use the included `minio.compose.yml` to run MinIO alongside the recorder:
 **1. Create `.env` file:**
 ```env
 TEAMS_WAIT_FOR_LOBBY=10
-DEBUG_SCREENSHOTS=false
 STORAGE_BACKEND=minio
 MINIO_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=minioadmin

@@ -3,12 +3,13 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
 from contextlib import asynccontextmanager
+from collections import OrderedDict
 import hmac
 import uvicorn
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from app.models import (
     JoinMeetingRequest,
@@ -32,6 +33,33 @@ logger = logging.getLogger(__name__)
 
 # Global storage for active sessions
 active_sessions: Dict[str, TeamsBot] = {}
+
+# Sessions that reached a terminal state. Kept out of /sessions but still
+# answerable by /status, so a client polling for the result of its meeting can
+# still read the final status and recording path. Bounded so it cannot grow
+# without limit.
+MAX_FINISHED_SESSIONS = 50
+finished_sessions: "OrderedDict[str, TeamsBot]" = OrderedDict()
+
+# Strong references to the running bot tasks. asyncio only keeps weak ones, so
+# without this a task can be garbage collected mid-meeting.
+_running_tasks: Set[asyncio.Task] = set()
+
+
+def _retire_session(session_id: str) -> None:
+    """Move a finished session out of the active list."""
+    bot = active_sessions.pop(session_id, None)
+    if bot is None:
+        return
+    finished_sessions[session_id] = bot
+    while len(finished_sessions) > MAX_FINISHED_SESSIONS:
+        finished_sessions.popitem(last=False)
+    logger.info(f"Session {session_id} retired ({bot.status.value})")
+
+
+def _lookup_session(session_id: str) -> Optional[TeamsBot]:
+    """Find a session whether it is still running or already finished."""
+    return active_sessions.get(session_id) or finished_sessions.get(session_id)
 
 
 @asynccontextmanager
@@ -103,9 +131,25 @@ async def root():
 async def join_meeting(request: JoinMeetingRequest):
     """Join a Teams meeting and start recording."""
     bot = TeamsBot(meeting_url=request.meeting_url, display_name=request.display_name)
+    bot.on_stop = _retire_session
     active_sessions[bot.session_id] = bot
-    asyncio.create_task(bot.start())
-    
+
+    task = asyncio.create_task(bot.start())
+    _running_tasks.add(task)
+
+    def _on_task_done(finished: asyncio.Task) -> None:
+        _running_tasks.discard(finished)
+        if finished.cancelled():
+            return
+        error = finished.exception()
+        if error:
+            # start() already recorded the failure on the bot; log it here so it
+            # does not surface only as "Task exception was never retrieved".
+            logger.error(f"Session {bot.session_id} failed to start: {error}")
+
+    task.add_done_callback(_on_task_done)
+
+
     return RecordingResponse(
         success=True,
         message=f"Bot joining with session ID: {bot.session_id}",
@@ -122,10 +166,11 @@ async def join_meeting(request: JoinMeetingRequest):
 @app.post("/stop/{session_id}", response_model=RecordingResponse)
 async def stop_recording(session_id: str):
     """Stop an active recording session."""
-    if session_id not in active_sessions:
+    bot = active_sessions.get(session_id)
+    if bot is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    bot = active_sessions.pop(session_id)
+    # stop() -> cleanup() fires on_stop, which retires the session for us.
     await bot.stop()
 
     return RecordingResponse(
@@ -146,10 +191,10 @@ async def stop_recording(session_id: str):
 @app.get("/status/{session_id}", response_model=StatusResponse)
 async def get_status(session_id: str):
     """Get the status of a recording session."""
-    if session_id not in active_sessions:
+    bot = _lookup_session(session_id)
+    if bot is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    bot = active_sessions[session_id]
     return StatusResponse(
         session_id=bot.session_id,
         status=bot.status,

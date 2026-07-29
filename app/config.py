@@ -1,5 +1,7 @@
 """Configuration settings for the Teams Meeting Recorder."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -9,14 +11,24 @@ DISPLAY_NUMBER = 99
 DISPLAY_WIDTH = 1280
 DISPLAY_HEIGHT = 720
 BROWSER_TIMEOUT = 1440
-RECORDINGS_DIR = "/app/recordings"
-LOGS_DIR = "/app/logs"
 API_TITLE = "Teams Meeting Recorder API"
-API_VERSION = "1.0.0"
 DEFAULT_SAMPLE_RATE = 48000
 DEFAULT_CHANNELS = 2
-PULSEAUDIO_MONITOR_NAME = "teams_virtual_sink.monitor"
-PULSEAUDIO_SINK_NAME = "teams_virtual_sink"
+
+
+def _read_app_version() -> str:
+    """Read APP_VERSION from application.properties, the file CI bumps on release."""
+    properties = Path(__file__).resolve().parent.parent / "application.properties"
+    try:
+        for line in properties.read_text(encoding="utf-8").splitlines():
+            if line.startswith("APP_VERSION="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return "0.0.0"
+
+
+API_VERSION = _read_app_version()
 
 
 class Settings(BaseSettings):
@@ -25,8 +37,9 @@ class Settings(BaseSettings):
     # Waiting room timeout in minutes before bot stops
     teams_wait_for_lobby: int = 30
 
-    # Debug screenshots
-    debug_screenshots: bool = False
+    # Where recordings are written before upload. Defaults to the container path;
+    # override with RECORDINGS_DIR to run outside Docker.
+    recordings_dir: str = "/app/recordings"
 
     # Storage backend: 'local', 'minio', or 'azure'
     storage_backend: str = "local"
@@ -48,9 +61,9 @@ class Settings(BaseSettings):
     # Called when a recording finishes saving (both local and MinIO)
     webhook_url: Optional[str] = None
 
-    # Optional shared secret sent as the X-Webhook-Secret header on webhook POSTs;
-    # the receiver (Summarly API) verifies it against its Webhook:Secret. Set via
-    # env WEBHOOK_SECRET. Leave unset to send no signature.
+    # Optional shared secret sent as the X-Webhook-Secret header on webhook POSTs
+    # for the receiver to verify. Set via env WEBHOOK_SECRET. Leave unset to send
+    # no signature.
     webhook_secret: Optional[str] = None
 
     # Optional shared secret protecting all endpoints except "/" (the health
@@ -65,3 +78,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Kept as a module constant so call sites read the same way as the other config
+# values; the value itself is env-overridable via Settings.
+RECORDINGS_DIR = settings.recordings_dir
