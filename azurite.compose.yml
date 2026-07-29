@@ -1,8 +1,8 @@
 # Azurite + TeamsMeetingRecorder with Azure Blob storage.
 # Usage:
-#   docker compose -f azurite.compose.yaml up -d
+#   docker compose -f azurite.compose.yml up -d
 #
-# Azurite blob API: http://localhost:410000
+# Azurite blob API: http://localhost:41000
 # Bot API: http://localhost:8000
 
 services:
@@ -11,7 +11,7 @@ services:
     container_name: teams-azurite
     command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data
     ports:
-      - "410000:10000"
+      - "41000:10000"
     volumes:
       - azurite-data:/data
     networks:
@@ -24,11 +24,16 @@ services:
       - "8000:8000"
     environment:
       STORAGE_BACKEND: azure
+      # Azurite's published development account. Not a secret - it is the same
+      # fixed key on every Azurite install, and it only works against a local
+      # emulator. https://learn.microsoft.com/azure/storage/common/storage-use-azurite
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
       AZURE_STORAGE_CONTAINER: meeting-recordings
-      AZURE_STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:410000/devstoreaccount1
+      AZURE_STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:41000/devstoreaccount1
       WEBHOOK_URL: ${WEBHOOK_URL:-}
     shm_size: 2gb
+    # reap chromium's child processes; without an init they pile up as zombies
+    init: true
     depends_on:
       - azurite
     networks:

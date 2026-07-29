@@ -38,7 +38,7 @@ logs/
 
 # Docker
 Dockerfile
-compose.yaml
+compose.yml
 docker-compose.yml
 .dockerignore
 

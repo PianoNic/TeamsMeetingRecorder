@@ -294,6 +294,17 @@ class TeamsBot:
         while self.status == BotStatus.RECORDING:
             polls += 1
 
+            # Hard cap, independent of anything the Teams UI tells us. Everything
+            # below reads the page, so a UI change could stop the bot ever leaving.
+            if settings.max_recording_minutes > 0 and self.started_at:
+                elapsed = (datetime.now() - self.started_at).total_seconds()
+                if elapsed >= settings.max_recording_minutes * 60:
+                    logger.warning(
+                        f"Reached max recording duration of {settings.max_recording_minutes} minutes, stopping"
+                    )
+                    await self.stop()
+                    break
+
             # Catches the meeting being ended for us, or the bot being removed.
             in_call = await self._still_in_meeting()
             if in_call is False:
