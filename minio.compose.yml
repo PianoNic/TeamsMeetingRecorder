@@ -18,6 +18,8 @@ services:
       minio:
         condition: service_healthy
     shm_size: '2gb'
+    # reap chromium's child processes; without an init they pile up as zombies
+    init: true
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]

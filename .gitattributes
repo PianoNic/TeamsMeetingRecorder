@@ -8,7 +8,7 @@ docker-entrypoint.sh text eol=lf
 # Docker files
 Dockerfile text eol=lf
 docker-compose.yml text eol=lf
-compose.yaml text eol=lf
+compose.yml text eol=lf
 
 # Documentation
 *.md text eol=lf

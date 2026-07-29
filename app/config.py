@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # override with RECORDINGS_DIR to run outside Docker.
     recordings_dir: str = "/app/recordings"
 
+    # Backstop on how long a single recording may run. Presence detection depends
+    # on Teams' UI, so if that ever stops firing the bot would otherwise record
+    # until the container restarts. Set to 0 to disable the cap.
+    max_recording_minutes: int = 240
+
     # Storage backend: 'local', 'minio', or 'azure'
     storage_backend: str = "local"
 
@@ -54,7 +59,7 @@ class Settings(BaseSettings):
     # Azure Blob settings (only used when storage_backend='azure')
     azure_storage_connection_string: Optional[str] = None
     azure_storage_container: str = "meeting-recordings"
-    # Optional public base for webhook file_location URLs (e.g. Azurite http://127.0.0.1:410000/devstoreaccount1)
+    # Optional public base for webhook file_location URLs (e.g. Azurite http://127.0.0.1:41000/devstoreaccount1)
     azure_storage_public_endpoint: Optional[str] = None
 
     # Webhook settings (optional)
