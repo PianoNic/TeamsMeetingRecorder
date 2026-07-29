@@ -1,4 +1,4 @@
-# Azurite + TeamsMeetingRecorder with Azure Blob storage (Summarly-compatible).
+# Azurite + TeamsMeetingRecorder with Azure Blob storage.
 # Usage:
 #   docker compose -f azurite.compose.yaml up -d
 #

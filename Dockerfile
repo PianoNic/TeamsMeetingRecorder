@@ -96,6 +96,9 @@ RUN useradd -m -u 1000 -s /bin/bash botuser && \
 # Copy application code
 COPY --chown=botuser:botuser app/ /app/app/
 
+# Version source for the API version reported by GET /
+COPY --chown=botuser:botuser application.properties /app/
+
 # Copy startup scripts
 COPY --chown=botuser:botuser docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh

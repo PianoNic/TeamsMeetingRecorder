@@ -3,12 +3,12 @@
 import logging
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import soundfile as sf
 import numpy as np
 
-from app.config import settings, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, PULSEAUDIO_MONITOR_NAME, PULSEAUDIO_SINK_NAME
+from app.config import DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class AudioRecorder:
             return
 
         self.is_recording = True
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
         self.recording_thread = threading.Thread(target=self._record_audio, daemon=True)
         self.recording_thread.start()
@@ -142,7 +142,7 @@ class AudioRecorder:
             return None
 
         if self.is_recording:
-            return (datetime.utcnow() - self.start_time).total_seconds()
+            return (datetime.now(timezone.utc) - self.start_time).total_seconds()
         else:
             try:
                 info = sf.info(self.output_file)
@@ -153,47 +153,3 @@ class AudioRecorder:
     def is_active(self) -> bool:
         """Check if recording is currently active."""
         return self.is_recording
-
-
-# Utility function to setup PulseAudio virtual sink
-def setup_virtual_audio_sink():
-    """
-    Setup a PulseAudio virtual sink for capturing browser audio.
-
-    This should be called during container initialization.
-    """
-    try:
-        logger.info("Setting up PulseAudio virtual sink")
-
-        cmd = [
-            "pactl", "load-module", "module-null-sink",
-            f"sink_name={PULSEAUDIO_SINK_NAME}",
-            f"sink_properties=device.description='Teams_Virtual_Audio_Sink'"
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode == 0:
-            logger.info(f"Virtual sink created: {PULSEAUDIO_SINK_NAME}")
-            logger.info(f"Monitor available at: {PULSEAUDIO_MONITOR_NAME}")
-            return True
-        else:
-            logger.error(f"Error creating virtual sink: {result.stderr}")
-            return False
-
-    except Exception as e:
-        logger.error(f"Exception setting up virtual sink: {e}")
-        return False
-
-
-def list_audio_devices():
-    """List all available PulseAudio sources (for debugging)."""
-    try:
-        print("\n=== Available PulseAudio Sources ===")
-        result = subprocess.run(
-            ['pactl', 'list', 'short', 'sources'],
-            capture_output=True, text=True
-        )
-        print(result.stdout)
-    except Exception as e:
-        print(f"Error listing sources: {e}")

@@ -2,8 +2,8 @@
 
 import logging
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from minio import Minio
 from minio.error import S3Error
@@ -24,21 +24,6 @@ class StorageBackend(ABC):
     @abstractmethod
     def upload_file(self, local_path: str, storage_path: str) -> bool:
         """Upload a file to storage. Returns True on success."""
-        pass
-
-    @abstractmethod
-    def download_file(self, storage_path: str, local_path: str) -> bool:
-        """Download a file from storage. Returns True on success."""
-        pass
-
-    @abstractmethod
-    def delete_file(self, storage_path: str) -> bool:
-        """Delete a file from storage. Returns True on success."""
-        pass
-
-    @abstractmethod
-    def file_exists(self, storage_path: str) -> bool:
-        """Check if a file exists in storage."""
         pass
 
     @abstractmethod
@@ -67,24 +52,6 @@ class LocalStorage(StorageBackend):
     def upload_file(self, local_path: str, storage_path: str) -> bool:
         """For local storage, the file is already in place."""
         return Path(local_path).exists()
-
-    def download_file(self, storage_path: str, local_path: str) -> bool:
-        """For local storage, just verify file exists."""
-        return Path(storage_path).exists()
-
-    def delete_file(self, storage_path: str) -> bool:
-        """Delete a local file."""
-        try:
-            Path(storage_path).unlink(missing_ok=True)
-            logger.info(f"Deleted local file: {storage_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete local file {storage_path}: {e}")
-            return False
-
-    def file_exists(self, storage_path: str) -> bool:
-        """Check if local file exists."""
-        return Path(storage_path).exists()
 
     def get_webhook_file_location(self, storage_path: str) -> str:
         return storage_path
@@ -138,44 +105,6 @@ class MinIOStorage(StorageBackend):
             return True
         except S3Error as e:
             logger.error(f"Failed to upload to MinIO {storage_path}: {e}")
-            return False
-
-    def download_file(self, storage_path: str, local_path: str) -> bool:
-        """Download a file from MinIO."""
-        try:
-            self.client.fget_object(
-                bucket_name=self.bucket,
-                object_name=storage_path,
-                file_path=local_path,
-            )
-            logger.info(f"Downloaded from MinIO: {storage_path}")
-            return True
-        except S3Error as e:
-            logger.error(f"Failed to download from MinIO {storage_path}: {e}")
-            return False
-
-    def delete_file(self, storage_path: str) -> bool:
-        """Delete a file from MinIO."""
-        try:
-            self.client.remove_object(
-                bucket_name=self.bucket,
-                object_name=storage_path,
-            )
-            logger.info(f"Deleted from MinIO: {storage_path}")
-            return True
-        except S3Error as e:
-            logger.error(f"Failed to delete from MinIO {storage_path}: {e}")
-            return False
-
-    def file_exists(self, storage_path: str) -> bool:
-        """Check if file exists in MinIO."""
-        try:
-            self.client.stat_object(
-                bucket_name=self.bucket,
-                object_name=storage_path,
-            )
-            return True
-        except S3Error:
             return False
 
     def get_webhook_file_location(self, storage_path: str) -> str:
@@ -233,51 +162,21 @@ class AzureBlobStorage(StorageBackend):
             logger.error(f"Failed to upload to Azure Blob {storage_path}: {e}")
             return False
 
-    def download_file(self, storage_path: str, local_path: str) -> bool:
-        from azure.core.exceptions import AzureError
-
-        try:
-            blob_client = self._container_client.get_blob_client(storage_path)
-            with open(local_path, "wb") as file:
-                file.write(blob_client.download_blob().readall())
-            logger.info(f"Downloaded from Azure Blob: {storage_path}")
-            return True
-        except AzureError as e:
-            logger.error(f"Failed to download from Azure Blob {storage_path}: {e}")
-            return False
-
-    def delete_file(self, storage_path: str) -> bool:
-        from azure.core.exceptions import AzureError
-
-        try:
-            self._container_client.delete_blob(storage_path)
-            logger.info(f"Deleted from Azure Blob: {storage_path}")
-            return True
-        except AzureError as e:
-            logger.error(f"Failed to delete from Azure Blob {storage_path}: {e}")
-            return False
-
-    def file_exists(self, storage_path: str) -> bool:
-        from azure.core.exceptions import ResourceNotFoundError
-
-        try:
-            self._container_client.get_blob_client(storage_path).get_blob_properties()
-            return True
-        except ResourceNotFoundError:
-            return False
-
     def get_webhook_file_location(self, storage_path: str) -> str:
         if self._public_endpoint:
             return f"{self._public_endpoint}/{self.container}/{storage_path}"
         return f"{self.container}/{storage_path}"
 
 
-def get_storage_backend() -> StorageBackend:
+@lru_cache(maxsize=1)
+def get_storage() -> StorageBackend:
     """
-    Factory function to get the configured storage backend.
+    Get the configured storage backend, building it on first use.
 
-    Returns:
-        StorageBackend instance based on settings.storage_backend
+    Built lazily and cached: the remote backends do network I/O in __init__
+    (bucket/container creation), so constructing this at import time would make
+    a misconfigured MinIO or Azure break the whole app's import rather than just
+    the recordings that need it.
     """
     backend = settings.storage_backend.lower()
     if backend == "minio":
@@ -288,7 +187,3 @@ def get_storage_backend() -> StorageBackend:
         return AzureBlobStorage()
     logger.info("Using local filesystem storage backend")
     return LocalStorage()
-
-
-# Global storage instance
-storage = get_storage_backend()
