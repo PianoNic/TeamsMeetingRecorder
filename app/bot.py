@@ -40,6 +40,7 @@ class TeamsBot:
 
         self.status = BotStatus.IDLE
         self.started_at: Optional[datetime] = None
+        self.recording_started_at: Optional[datetime] = None
         self.stopped_at: Optional[datetime] = None
         self.recording_file: Optional[str] = None
         self.storage_path: Optional[str] = None
@@ -296,8 +297,10 @@ class TeamsBot:
 
             # Hard cap, independent of anything the Teams UI tells us. Everything
             # below reads the page, so a UI change could stop the bot ever leaving.
-            if settings.max_recording_minutes > 0 and self.started_at:
-                elapsed = (datetime.now() - self.started_at).total_seconds()
+            # Measured from the start of the recording, not the start of the
+            # session - otherwise a long lobby wait eats into the cap.
+            if settings.max_recording_minutes > 0 and self.recording_started_at:
+                elapsed = (datetime.now() - self.recording_started_at).total_seconds()
                 if elapsed >= settings.max_recording_minutes * 60:
                     logger.warning(
                         f"Reached max recording duration of {settings.max_recording_minutes} minutes, stopping"
@@ -348,6 +351,7 @@ class TeamsBot:
             monitor_name=self.monitor_name
         )
         self.audio_recorder.start()
+        self.recording_started_at = datetime.now()
         self.status = BotStatus.RECORDING
         logger.info(f"Recording from '{self.monitor_name}' to: {self.recording_file}")
 

@@ -38,11 +38,25 @@ done
 echo "Available audio devices:"
 pactl list sinks short || echo "(PulseAudio reported no sinks)"
 
-# Start Xvfb
+# Start Xvfb. Its lock file and socket survive a restart exactly like PulseAudio's
+# runtime state, and a stale lock makes Xvfb refuse to start ("server already
+# running"). The container would still answer the health check while every
+# browser launch failed with "Missing X server or $DISPLAY", so clear them first.
 echo "Starting Xvfb on display :99..."
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset 2>/dev/null &
 XVFB_PID=$!
-sleep 2
+
+# Do not continue until the display actually accepts connections.
+for _ in $(seq 1 15); do
+    xset -q -display :99 >/dev/null 2>&1 && break
+    sleep 1
+done
+if ! xset -q -display :99 >/dev/null 2>&1; then
+    echo "FATAL: Xvfb did not come up on :99 - a browser could never launch." >&2
+    exit 1
+fi
+echo "Xvfb is up on :99"
 
 # Start window manager
 echo "Starting Fluxbox window manager..."

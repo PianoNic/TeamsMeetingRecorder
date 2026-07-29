@@ -9,7 +9,10 @@ services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
     container_name: teams-azurite
-    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data
+    # --skipApiVersionCheck: the azure-storage-blob SDK requests a newer service
+    # version than Azurite recognises, and without this every upload fails with
+    # InvalidHeaderValue "The API version ... is not supported by Azurite".
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck
     ports:
       - "41000:10000"
     volumes:
