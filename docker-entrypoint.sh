@@ -17,16 +17,26 @@ EOF
 echo "Disabling system beep..."
 xset -b 2>/dev/null || true
 
-# Start PulseAudio
+# Start PulseAudio. Runtime state survives in the container filesystem across a
+# `docker start`, and a stale socket stops the daemon coming back up, so clear it
+# first - otherwise restarting a container that has run before never recovers.
 echo "Starting PulseAudio..."
+rm -rf /tmp/pulse-* "${HOME:-/home/botuser}/.config/pulse" 2>/dev/null || true
 pulseaudio --start --exit-idle-time=-1 || true
+
+# Wait for the daemon to accept connections before anything talks to it.
+for _ in $(seq 1 10); do
+    pactl info >/dev/null 2>&1 && break
+    sleep 1
+done
 
 # Each recording session creates and tears down its own null sink, so no
 # shared sink is set up here.
 
-# List audio devices for debugging
+# List audio devices for debugging. Guarded: `set -e` is on, and this is only
+# diagnostics - it must never be the reason the container fails to start.
 echo "Available audio devices:"
-pactl list sinks short
+pactl list sinks short || echo "(PulseAudio reported no sinks)"
 
 # Start Xvfb
 echo "Starting Xvfb on display :99..."
