@@ -192,17 +192,32 @@ class TeamsBot:
         except Exception as e:
             logger.error(f"Problem clicking on join: {e}")
 
-        # Check if admitted
-        try:
-            hangup = self.page.locator("button[id='hangup-button']").first
-            timeout_ms = settings.teams_wait_for_lobby * 60 * 1000
+        # Wait for the lobby to resolve one way or the other. Three outcomes:
+        # admitted (hangup button appears), denied (Teams says so outright), or
+        # nobody acted at all (timeout). All three have to be told apart - being
+        # turned away is a different answer than being ignored, and both are
+        # failures the caller needs to hear about.
+        hangup = self.page.locator("button[id='hangup-button']")
+        denied = self.page.get_by_text(self.DENIED_TEXT, exact=False)
+        timeout_ms = settings.teams_wait_for_lobby * 60 * 1000
 
-            await hangup.wait_for(state="visible", timeout=timeout_ms)
-            logger.info("Joined meeting")
-        except Exception as e:
-            logger.info(f"Not admitted within {settings.teams_wait_for_lobby} minute")
-            await self.stop()
-            return  # Do not continue to start recording; sink is already removed in cleanup
+        try:
+            await hangup.or_(denied).first.wait_for(state="visible", timeout=timeout_ms)
+        except Exception:
+            raise RuntimeError(
+                f"Never admitted: nobody accepted or declined the bot within "
+                f"{settings.teams_wait_for_lobby} minutes"
+            )
+
+        try:
+            was_denied = await denied.first.is_visible(timeout=2000)
+        except Exception:
+            was_denied = False
+
+        if was_denied:
+            raise RuntimeError("Denied entry to the meeting")
+
+        logger.info("Joined meeting")
 
     async def _leave_meeting(self):
         """Leave the meeting."""
@@ -251,6 +266,10 @@ class TeamsBot:
     # participant badge at all - it shows this instead while the bot is the only
     # one left. The bot forces Accept-Language en-US, so the string is stable.
     ALONE_TEXT = "Waiting for others to join"
+
+    # Shown on the bot's own page when an organiser declines it from the lobby.
+    # Same en-US assumption as ALONE_TEXT.
+    DENIED_TEXT = "denied access to the meeting"
 
     async def _read_participant_count(self) -> Optional[int]:
         """Participants reported by the toolbar badge, or None when unavailable.
@@ -364,9 +383,6 @@ class TeamsBot:
 
             await self._setup_browser()
             await self._join_meeting()
-            # If not admitted, _join_meeting calls stop() and returns; do not start recording
-            if self.status != BotStatus.JOINING:
-                return
             self._start_audio_recording()
             self._monitoring_task = asyncio.create_task(self._monitor_presence())
             logger.info("Bot started")
