@@ -121,7 +121,8 @@ curl http://localhost:8000/sessions
 | `joining` | Requested to join, waiting in the lobby |
 | `recording` | In the meeting and recording |
 | `denied` | An organiser declined the bot from the lobby. It will not get in; retrying needs someone to let it through |
-| `error` | Something went wrong — never admitted within the timeout, a browser or storage failure. See `error_message` |
+| `not_admitted` | Nobody accepted or declined the bot before `TEAMS_WAIT_FOR_LOBBY` ran out. Worth retrying later |
+| `error` | Something went wrong — a browser, audio or storage failure. See `error_message` |
 | `stopped` | Finished normally. The recording is at `recording_file` or already uploaded |
 
 ## Configuration

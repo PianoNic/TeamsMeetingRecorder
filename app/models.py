@@ -12,10 +12,12 @@ class BotStatus(str, Enum):
     JOINING = "joining"
     RECORDING = "recording"
     LEAVING = "leaving"
-    # An organiser actively declined the bot from the lobby. Distinct from ERROR
-    # so callers can tell "we were turned away" from "something broke", without
-    # matching on the text of error_message.
+    # The two ways of not getting in, kept apart from ERROR and from each other:
+    # they call for different reactions. DENIED means someone said no, so
+    # retrying is pointless without a human. NOT_ADMITTED means nobody answered
+    # at all, which is worth retrying later.
     DENIED = "denied"
+    NOT_ADMITTED = "not_admitted"
     ERROR = "error"
     STOPPED = "stopped"
 
