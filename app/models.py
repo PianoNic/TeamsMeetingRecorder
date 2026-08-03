@@ -12,6 +12,10 @@ class BotStatus(str, Enum):
     JOINING = "joining"
     RECORDING = "recording"
     LEAVING = "leaving"
+    # An organiser actively declined the bot from the lobby. Distinct from ERROR
+    # so callers can tell "we were turned away" from "something broke", without
+    # matching on the text of error_message.
+    DENIED = "denied"
     ERROR = "error"
     STOPPED = "stopped"
 
