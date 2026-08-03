@@ -23,6 +23,10 @@ class MeetingDenied(RuntimeError):
     """An organiser declined the bot from the lobby."""
 
 
+class NotAdmitted(RuntimeError):
+    """Nobody accepted or declined the bot before the lobby timeout."""
+
+
 class TeamsBot:
     """Bot that joins Teams meetings and records audio using Playwright."""
 
@@ -208,7 +212,7 @@ class TeamsBot:
         try:
             await hangup.or_(denied).first.wait_for(state="visible", timeout=timeout_ms)
         except Exception:
-            raise RuntimeError(
+            raise NotAdmitted(
                 f"Never admitted: nobody accepted or declined the bot within "
                 f"{settings.teams_wait_for_lobby} minutes"
             )
@@ -269,6 +273,10 @@ class TeamsBot:
     # Anonymous joins usually land in Teams' "light meetings" client, which has no
     # participant badge at all - it shows this instead while the bot is the only
     # one left. The bot forces Accept-Language en-US, so the string is stable.
+    # States that mean the session failed. cleanup() must not stamp STOPPED
+    # over any of them.
+    TERMINAL_FAILURES = (BotStatus.DENIED, BotStatus.NOT_ADMITTED, BotStatus.ERROR)
+
     ALONE_TEXT = "Waiting for others to join"
 
     # Shown on the bot's own page when an organiser declines it from the lobby.
@@ -393,8 +401,14 @@ class TeamsBot:
 
         except Exception as e:
             logger.error(f"Start failed: {e}")
-            # Being turned away is a distinct outcome, not a malfunction.
-            self.status = BotStatus.DENIED if isinstance(e, MeetingDenied) else BotStatus.ERROR
+            # Not getting in is a distinct outcome, not a malfunction, and being
+            # refused is not the same as being ignored.
+            if isinstance(e, MeetingDenied):
+                self.status = BotStatus.DENIED
+            elif isinstance(e, NotAdmitted):
+                self.status = BotStatus.NOT_ADMITTED
+            else:
+                self.status = BotStatus.ERROR
             self.error_message = str(e)
             self.stopped_at = datetime.now()
 
@@ -505,7 +519,7 @@ class TeamsBot:
             except Exception as e:
                 logger.error(f"Error removing audio sink: {e}")
 
-        if self.status not in (BotStatus.ERROR, BotStatus.DENIED):
+        if self.status not in self.TERMINAL_FAILURES:
             self.status = BotStatus.STOPPED
         logger.info(f"Cleanup complete for {self.session_id}")
 
