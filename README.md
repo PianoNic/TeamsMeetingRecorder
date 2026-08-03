@@ -112,6 +112,18 @@ curl http://localhost:8000/sessions
 | `/stop/{id}` | POST | Stop a running session. |
 | `/sessions` | GET | List the sessions currently running. |
 
+### Session status
+
+`/status/{id}` reports one of these. The failure cases are distinct on purpose, so a caller can act on them without matching on `error_message`.
+
+| Status | Meaning |
+|---|---|
+| `joining` | Requested to join, waiting in the lobby |
+| `recording` | In the meeting and recording |
+| `denied` | An organiser declined the bot from the lobby. It will not get in; retrying needs someone to let it through |
+| `error` | Something went wrong — never admitted within the timeout, a browser or storage failure. See `error_message` |
+| `stopped` | Finished normally. The recording is at `recording_file` or already uploaded |
+
 ## Configuration
 
 Set these as environment variables or in a `.env` file.

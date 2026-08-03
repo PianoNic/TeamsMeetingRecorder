@@ -19,6 +19,10 @@ from app.webhook import send_webhook, WebhookPayload
 logger = logging.getLogger(__name__)
 
 
+class MeetingDenied(RuntimeError):
+    """An organiser declined the bot from the lobby."""
+
+
 class TeamsBot:
     """Bot that joins Teams meetings and records audio using Playwright."""
 
@@ -215,7 +219,7 @@ class TeamsBot:
             was_denied = False
 
         if was_denied:
-            raise RuntimeError("Denied entry to the meeting")
+            raise MeetingDenied("Denied entry to the meeting")
 
         logger.info("Joined meeting")
 
@@ -389,7 +393,8 @@ class TeamsBot:
 
         except Exception as e:
             logger.error(f"Start failed: {e}")
-            self.status = BotStatus.ERROR
+            # Being turned away is a distinct outcome, not a malfunction.
+            self.status = BotStatus.DENIED if isinstance(e, MeetingDenied) else BotStatus.ERROR
             self.error_message = str(e)
             self.stopped_at = datetime.now()
 
@@ -500,7 +505,7 @@ class TeamsBot:
             except Exception as e:
                 logger.error(f"Error removing audio sink: {e}")
 
-        if self.status != BotStatus.ERROR:
+        if self.status not in (BotStatus.ERROR, BotStatus.DENIED):
             self.status = BotStatus.STOPPED
         logger.info(f"Cleanup complete for {self.session_id}")
 
