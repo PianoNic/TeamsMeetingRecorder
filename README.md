@@ -138,7 +138,8 @@ Set these as environment variables or in a `.env` file. A value may reference an
 | `WEBHOOK_URL` | – | Called when a recording finishes. Unset disables webhooks |
 | `WEBHOOK_SECRET` | – | Sent as `X-Webhook-Secret` for the receiver to verify. Unset sends no signature |
 | `BOT_ACCESS_TOKEN` | – | Protects every endpoint except `/`. Requires `Authorization: Bearer <token>` or `X-API-Key`. Unset leaves the API open |
-| `AZURE_STORAGE_CONNECTION_STRING` | – | Azure / Azurite connection string (`STORAGE_BACKEND=azure`) |
+| `AZURE_STORAGE_CONNECTION_STRING` | – | Azure / Azurite connection string (`STORAGE_BACKEND=azure`). Either this or `AZURE_STORAGE_ACCOUNT_URL` |
+| `AZURE_STORAGE_ACCOUNT_URL` | – | Account URL authenticated with the managed identity instead of a key. Container must already exist |
 | `AZURE_STORAGE_CONTAINER` | `meeting-recordings` | Blob container name |
 | `AZURE_STORAGE_PUBLIC_ENDPOINT` | – | Public blob base URL used in the webhook `file_location` |
 | `MINIO_ENDPOINT` | – | e.g. `minio.example.com:9000` (`STORAGE_BACKEND=minio`) |
@@ -167,6 +168,14 @@ docker compose -f azurite.compose.yml up -d
 ```
 
 `file_location` is sent as `meeting-recordings/{session}/{file}.wav`, or a full HTTP URL when `AZURE_STORAGE_PUBLIC_ENDPOINT` is set.
+
+**On Azure App Service** you can skip the connection string and use the app's managed identity: set `AZURE_STORAGE_ACCOUNT_URL` instead, give the identity *Storage Blob Data Contributor* on the account, and make sure the container exists (the bot will not create it in this mode). No secret needed. This composes with `${NAME}` references when the platform already exposes these values under its own names:
+
+```env
+STORAGE_BACKEND=azure
+AZURE_STORAGE_ACCOUNT_URL=${Storage__BlobServiceUri}
+AZURE_STORAGE_CONTAINER=${Storage__BlobContainerName}
+```
 
 </details>
 

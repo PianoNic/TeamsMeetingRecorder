@@ -117,27 +117,44 @@ class AzureBlobStorage(StorageBackend):
 
     def __init__(self):
         from azure.core.exceptions import ResourceExistsError
-        from azure.storage.blob import BlobServiceClient, ContentSettings, PublicAccess
-
-        if not settings.azure_storage_connection_string:
-            raise ValueError(
-                "Azure Blob not configured. Set AZURE_STORAGE_CONNECTION_STRING "
-                "(use Azurite dev connection string locally)."
-            )
+        from azure.storage.blob import ContentSettings, PublicAccess
 
         self.container = settings.azure_storage_container
         self._public_endpoint = (settings.azure_storage_public_endpoint or "").rstrip("/")
-        self._service_client = BlobServiceClient.from_connection_string(
-            settings.azure_storage_connection_string
-        )
+        self._service_client = self._build_service_client()
         self._container_client = self._service_client.get_container_client(self.container)
         self._content_settings = ContentSettings(content_type="audio/wav")
 
-        try:
-            self._container_client.create_container(public_access=PublicAccess.Blob)
-            logger.info(f"Created Azure blob container: {self.container}")
-        except ResourceExistsError:
-            logger.info(f"Using existing Azure blob container: {self.container}")
+        if settings.azure_storage_connection_string:
+            try:
+                self._container_client.create_container(public_access=PublicAccess.Blob)
+                logger.info(f"Created Azure blob container: {self.container}")
+            except ResourceExistsError:
+                logger.info(f"Using existing Azure blob container: {self.container}")
+        else:
+            # Managed identity is usually scoped to the data plane of a container
+            # someone else provisioned, and accounts with identity access tend to
+            # forbid public blobs. create_container would 403 rather than raise
+            # ResourceExistsError, so only check that the container is reachable
+            # and let a real misconfiguration fail here instead of on first upload.
+            self._container_client.get_container_properties()
+            logger.info(f"Using Azure blob container via managed identity: {self.container}")
+
+    @staticmethod
+    def _build_service_client():
+        """Pick the credential from config: account key / Azurite, or managed identity."""
+        from azure.storage.blob import BlobServiceClient
+
+        if settings.azure_storage_connection_string:
+            return BlobServiceClient.from_connection_string(settings.azure_storage_connection_string)
+        if settings.azure_storage_account_url:
+            from azure.identity import DefaultAzureCredential
+
+            return BlobServiceClient(settings.azure_storage_account_url, credential=DefaultAzureCredential())
+        raise ValueError(
+            "Azure Blob not configured. Set AZURE_STORAGE_CONNECTION_STRING (account key or "
+            "Azurite) or AZURE_STORAGE_ACCOUNT_URL (managed identity)."
+        )
 
     def uses_remote_storage(self) -> bool:
         return True

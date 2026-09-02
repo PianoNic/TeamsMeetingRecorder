@@ -61,6 +61,10 @@ class Settings(BaseSettings):
 
     # Azure Blob settings (only used when storage_backend='azure')
     azure_storage_connection_string: Optional[str] = None
+    # Alternative to the connection string: the account URL
+    # (https://<account>.blob.core.windows.net/) authenticated with
+    # DefaultAzureCredential, i.e. the managed identity on Azure App Service.
+    azure_storage_account_url: Optional[str] = None
     azure_storage_container: str = "meeting-recordings"
     # Optional public base for webhook file_location URLs (e.g. Azurite http://127.0.0.1:41000/devstoreaccount1)
     azure_storage_public_endpoint: Optional[str] = None
