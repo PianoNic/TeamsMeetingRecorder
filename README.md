@@ -127,7 +127,7 @@ curl http://localhost:8000/sessions
 
 ## Configuration
 
-Set these as environment variables or in a `.env` file.
+Set these as environment variables or in a `.env` file. A value may reference another environment variable as `${NAME}`, e.g. `AZURE_STORAGE_CONTAINER=${Storage__BlobContainerName}` to reuse a platform-managed value instead of duplicating it.
 
 | Variable | Default | Description |
 |---|---|---|
