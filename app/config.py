@@ -1,7 +1,10 @@
 """Configuration settings for the Teams Meeting Recorder."""
 
+import os
+import re
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -76,6 +79,20 @@ class Settings(BaseSettings):
     # `Authorization: Bearer <token>` or `X-API-Key: <token>` (401 otherwise).
     # Leave unset to keep the recorder open (no inbound auth).
     bot_access_token: Optional[str] = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _expand_env_refs(cls, value):
+        """Resolve `${OTHER_VAR}` in any value to that variable's current value.
+
+        Lets a deployment point e.g. AZURE_STORAGE_CONTAINER at a platform-managed
+        variable (`${Storage__BlobContainerName}`) instead of copying the value.
+        An unset reference is left as written so the mistake is visible.
+        """
+        if isinstance(value, str) and "${" in value:
+            # ponytail: one level of indirection - no recursion, no defaults syntax
+            value = re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), value)
+        return value
 
     class Config:
         env_file = ".env"
