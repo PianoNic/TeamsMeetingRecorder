@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     alsa-utils \
     libsndfile1 \
     libportaudio2 \
+    # Decodes whatever gets played through the bot's microphone
+    ffmpeg \
     # Screenshot utility
     scrot \
     && rm -rf /var/lib/apt/lists/*
@@ -90,7 +92,7 @@ FROM dependencies AS runtime
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash botuser && \
-    mkdir -p /app /app/recordings && \
+    mkdir -p /app /app/recordings /app/media && \
     chown -R botuser:botuser /app
 
 # Copy application code

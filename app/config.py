@@ -49,6 +49,41 @@ class Settings(BaseSettings):
     # until the container restarts. Set to 0 to disable the cap.
     max_recording_minutes: int = 240
 
+    # Microphone playback: give the bot a virtual microphone it can speak
+    # through, so audio can be played into the meeting.
+    #
+    # Off by default, and deliberately so. A real microphone and chromium's
+    # --use-fake-device-for-media-stream cannot coexist: the fake device
+    # replaces every capture device with a generated beep, so the bot would
+    # play into something nobody hears. Dropping that flag is what makes
+    # playback possible, but it also takes away the fake camera the Teams
+    # prejoin screen has always had. Recording keeps the join path that is
+    # known to work; turn this on when you want the bot to talk.
+    mic_playback_enabled: bool = False
+
+    # Turn off Teams' noise suppression once in the call. It is designed to
+    # strip everything that is not a voice, which is what music and most
+    # generated audio look like to it. Only acted on when mic playback is on.
+    disable_noise_suppression: bool = True
+
+    # Loop the microphone back into the recording sink, so the saved file
+    # contains what the bot played as well as what the meeting said. Off means
+    # the recording holds meeting audio only.
+    playback_in_recording: bool = True
+
+    # The only directory /audio/{id}/play will read files from. Uploads land
+    # here too. Paths outside it are refused: the API can be unauthenticated,
+    # and playing arbitrary container files into a meeting is not a feature.
+    media_dir: str = "/app/media"
+
+    # Cap on a single upload to /audio/{id}/play/upload, in megabytes.
+    max_upload_mb: int = 100
+
+    # Base URL the ingest URL is built from, for deployments behind a proxy
+    # where the request's own host header is not reachable by the pushing
+    # application. Unset means "use the URL the request came in on".
+    public_base_url: Optional[str] = None
+
     # Storage backend: 'local', 'minio', or 'azure'
     storage_backend: str = "local"
 
@@ -105,6 +140,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Kept as a module constant so call sites read the same way as the other config
-# values; the value itself is env-overridable via Settings.
+# Kept as module constants so call sites read the same way as the other config
+# values; the values themselves are env-overridable via Settings.
 RECORDINGS_DIR = settings.recordings_dir
+MEDIA_DIR = settings.media_dir
