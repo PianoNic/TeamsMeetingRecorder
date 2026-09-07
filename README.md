@@ -36,6 +36,8 @@ Each session is fully isolated: its own browser and its own PulseAudio sink, so 
 - **Flexible storage** — local disk, Azure Blob (or Azurite), or MinIO / any S3-compatible bucket.
 - **Webhooks** — POST on completion, optionally signed with a shared secret.
 - **Optional auth** — a bearer token in front of every endpoint except the health probe.
+- **Speaks, not just listens** — opt in with `MIC_PLAYBACK_ENABLED`, then play a file or push a live stream to an ingest URL and the meeting hears it through the bot's microphone.
+- **Record, speak, or both** — `record: false` joins a meeting purely to play audio in, capturing nothing.
 - **48 kHz stereo** — recorded straight off a per-session virtual sink with `parec`.
 
 ## Get started
@@ -111,6 +113,13 @@ curl http://localhost:8000/sessions
 | `/status/{id}` | GET | Session state, uptime, and recording path. Answers after the session ends. |
 | `/stop/{id}` | POST | Stop a running session. |
 | `/sessions` | GET | List the sessions currently running. |
+| `/audio/{id}` | GET | Microphone and playback state for a session. |
+| `/audio/{id}/mute` · `/unmute` | POST | Mute or unmute the bot in the meeting. |
+| `/audio/{id}/play` | POST | Play a file from `MEDIA_DIR` through the microphone. |
+| `/audio/{id}/play/upload` | POST | Upload an audio file and play it straight away. |
+| `/audio/{id}/stream` | POST · DELETE | Open or close an ingest URL for live audio. |
+| `/audio/{id}/ingest/{token}` | PUT · POST | Push a live audio stream in. Carries its own secret. |
+| `/audio/{id}/stop` | POST | Stop whatever is playing. `?mute_after=true` mutes too. |
 
 ### Session status
 
@@ -120,10 +129,117 @@ curl http://localhost:8000/sessions
 |---|---|
 | `joining` | Requested to join, waiting in the lobby |
 | `recording` | In the meeting and recording |
+| `connected` | In the meeting but not recording — joined with `record: false` |
 | `denied` | An organiser declined the bot from the lobby. It will not get in; retrying needs someone to let it through |
 | `not_admitted` | Nobody accepted or declined the bot before `TEAMS_WAIT_FOR_LOBBY` ran out. Worth retrying later |
 | `error` | Something went wrong — a browser, audio or storage failure. See `error_message` |
 | `stopped` | Finished normally. The recording is at `recording_file` or already uploaded |
+
+## Speaking into a meeting
+
+Recording is the default and needs no configuration. Giving the bot a microphone is
+opt-in, because it changes how the browser is launched:
+
+```bash
+MIC_PLAYBACK_ENABLED=true
+```
+
+**Why it is opt-in.** The recorder has always launched chromium with
+`--use-fake-device-for-media-stream`, which supplies a fake camera *and* replaces every
+microphone with a generated beep. A bot using that fake microphone cannot be heard no
+matter what it plays, so enabling playback drops the flag — and with it the fake camera.
+Teams then puts an "are you sure you don't want audio or video?" interstitial over the
+prejoin screen, which the bot dismisses on this path only. With `MIC_PLAYBACK_ENABLED`
+off, the browser flags and the join path are exactly what they have always been.
+
+Audio reaches the meeting through a second PulseAudio sink, kept separate from the
+recording sink on purpose — pointing the microphone at the sink the browser also plays
+into would feed the meeting straight back to itself.
+
+The sink's monitor is not handed to the browser directly. **Chromium does not enumerate
+monitor sources at all**, so `getUserMedia` would find no microphone whatsoever;
+`module-remap-source` turns the monitor into a real source that Teams lists and selects
+by name.
+
+```
+  what it hears
+      chromium ──PULSE_SINK──▶ teams_sink_<id> ──▶ parec ──▶ .wav
+                                      ▲
+                                      │ module-loopback   (PLAYBACK_IN_RECORDING)
+                                      │
+  what it says                        │
+      chromium ◀─PULSE_SOURCE── teams_mic_src_<id> ◀── teams_mic_<id> ◀── pacat ◀── ffmpeg
+                                (module-remap-source)                                  ▲
+                                                                          a file, or an ingest stream
+```
+
+Teams' noise suppression is turned off once the bot is in the call. It is built to strip
+everything that is not a voice, which is exactly what music looks like to it — set
+`DISABLE_NOISE_SUPPRESSION=false` to leave it alone.
+
+### Play a file
+
+Mount your audio at `MEDIA_DIR` (`/app/media`) and play it by name. Paths outside that
+directory are refused, so an open API cannot be talked into reading arbitrary container files
+out loud.
+
+```bash
+curl -X POST http://localhost:8000/audio/{session_id}/play \
+  -H "Content-Type: application/json" \
+  -d '{"path": "hold-music.mp3", "loop": true, "volume": 1.0}'
+```
+
+Or upload one in the same request. The upload is deleted as soon as it finishes playing:
+
+```bash
+curl -X POST http://localhost:8000/audio/{session_id}/play/upload \
+  -F file=@greeting.mp3
+```
+
+Both unmute the bot first by default; pass `"unmute": false` (or `-F unmute=false`) to stage
+audio without being heard yet. Stop with `POST /audio/{session_id}/stop?mute_after=true`.
+
+### Stream live audio in
+
+Ask for an ingest URL and hand it to whatever produces the audio — a TTS engine, a player,
+another service. It carries its own secret, so it can be passed on without also handing over
+`BOT_ACCESS_TOKEN`.
+
+```bash
+curl -X POST http://localhost:8000/audio/{session_id}/stream \
+  -H "Content-Type: application/json" -d '{}'
+# {"ingest_url": "http://localhost:8000/audio/<id>/ingest/<token>", "token": "...", ...}
+```
+
+Anything ffmpeg can decode works — mp3, ogg, wav, webm — and the format is sniffed from the
+bytes. Push it with a chunked PUT:
+
+```bash
+ffmpeg -re -i some-source -f mp3 - | curl -T - "$INGEST_URL"
+
+# or from a TTS service
+curl -s https://tts.example.com/say?text=hello | curl -T - "$INGEST_URL"
+```
+
+The bot plays it as it arrives. Pushing faster than realtime blocks on the write rather than
+buffering, so the meeting stays in sync with the source. For headerless PCM, say so when
+opening the stream: `{"format": "s16le"}`. Close it with `DELETE /audio/{session_id}/stream`,
+which also invalidates the URL.
+
+### Join without recording
+
+Sometimes the bot is only there to say something. `record: false` joins, wires up the
+microphone, and captures nothing — no file, no upload, and `/status` reports `connected`
+rather than `recording`.
+
+```bash
+curl -X POST http://localhost:8000/join \
+  -H "Content-Type: application/json" \
+  -d '{"meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
+       "display_name": "Announcer", "record": false}'
+```
+
+`MAX_RECORDING_MINUTES` still applies, so a speak-only bot cannot sit in a meeting forever.
 
 ## Configuration
 
@@ -137,7 +253,13 @@ Set these as environment variables or in a `.env` file. A value may reference an
 | `STORAGE_BACKEND` | `local` | `local`, `azure`, or `minio` |
 | `WEBHOOK_URL` | – | Called when a recording finishes. Unset disables webhooks |
 | `WEBHOOK_SECRET` | – | Sent as `X-Webhook-Secret` for the receiver to verify. Unset sends no signature |
-| `BOT_ACCESS_TOKEN` | – | Protects every endpoint except `/`. Requires `Authorization: Bearer <token>` or `X-API-Key`. Unset leaves the API open |
+| `BOT_ACCESS_TOKEN` | – | Protects every endpoint except `/` and `/audio/{id}/ingest/{token}`. Requires `Authorization: Bearer <token>` or `X-API-Key`. Unset leaves the API open |
+| `MIC_PLAYBACK_ENABLED` | `false` | Give the bot a microphone it can play audio through. Enabling it drops chromium's fake capture device, so the bot has no camera on the prejoin screen (handled) but can finally be heard |
+| `DISABLE_NOISE_SUPPRESSION` | `true` | Turn off Teams' noise suppression after joining, so music is not treated as noise. Only applies when `MIC_PLAYBACK_ENABLED` is on |
+| `PLAYBACK_IN_RECORDING` | `true` | Include what the bot played in the saved recording, not just what it heard |
+| `MEDIA_DIR` | `/app/media` | The only directory `/audio/{id}/play` will read from. Uploads land here too |
+| `MAX_UPLOAD_MB` | `100` | Cap on a single upload to `/audio/{id}/play/upload` |
+| `PUBLIC_BASE_URL` | – | Base URL used to build the ingest URL, for deployments behind a proxy. Unset uses the request's own host |
 | `AZURE_STORAGE_CONNECTION_STRING` | – | Azure / Azurite connection string (`STORAGE_BACKEND=azure`). Either this or `AZURE_STORAGE_ACCOUNT_URL` |
 | `AZURE_STORAGE_ACCOUNT_URL` | – | Account URL authenticated with the managed identity instead of a key. Container must already exist |
 | `AZURE_STORAGE_CONTAINER` | `meeting-recordings` | Blob container name |
