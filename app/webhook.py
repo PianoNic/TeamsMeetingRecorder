@@ -21,7 +21,8 @@ class WebhookPayload:
         meeting_url: str,
         file_location: str,
         started_at: datetime,
-        stopped_at: datetime
+        stopped_at: datetime,
+        reference: Optional[str] = None,
     ):
         """
         Initialize webhook payload.
@@ -32,18 +33,21 @@ class WebhookPayload:
             file_location: Local path, MinIO URL, or Azure blob path/URL
             started_at: When recording started
             stopped_at: When recording stopped
+            reference: The caller's id for the meeting, as given to /join
         """
         self.session_id = session_id
         self.meeting_url = meeting_url
         self.file_location = file_location
         self.started_at = started_at
         self.stopped_at = stopped_at
+        self.reference = reference
 
     def to_dict(self) -> dict:
         """Convert payload to dictionary for JSON serialization."""
         return {
             "session_id": self.session_id,
             "meeting_url": self.meeting_url,
+            "reference": self.reference,
             "file_location": self.file_location,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "stopped_at": self.stopped_at.isoformat() if self.stopped_at else None
