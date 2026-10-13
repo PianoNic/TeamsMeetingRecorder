@@ -8,25 +8,34 @@ from typing import Optional
 import soundfile as sf
 import numpy as np
 
-from app.config import DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS
+from app.config import DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, settings
 
 logger = logging.getLogger(__name__)
 
 class AudioRecorder:
     """Records audio from a PulseAudio virtual sink monitor."""
 
-    def __init__(self, output_file: str, monitor_name: Optional[str] = None):
+    def __init__(
+        self,
+        output_file: str,
+        monitor_name: Optional[str] = None,
+        file_format: Optional[str] = None,
+    ):
         """
         Initialize the audio recorder.
 
         Args:
             output_file: Path to save the recording
             monitor_name: Specific PulseAudio monitor to record from (optional)
+            file_format: "wav" or "flac"; RECORDING_FORMAT when omitted
         """
         self.output_file = output_file
         self.monitor_name = monitor_name
+        # The sink runs at this rate too (see TeamsBot._create_null_sink), so
+        # parec reads the samples as they are, without resampling.
         self.sample_rate = DEFAULT_SAMPLE_RATE
         self.channels = DEFAULT_CHANNELS
+        self.file_format = file_format or settings.recording_format
 
         self.is_recording = False
         self.recording_thread: Optional[threading.Thread] = None
@@ -54,7 +63,10 @@ class AudioRecorder:
 
         logger.info(f"Recording from PulseAudio monitor: {self.monitor_name}")
         self._log_available_sources()
-        logger.info(f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels")
+        logger.info(
+            f"Starting audio recording: {self.sample_rate}Hz, {self.channels} channels, "
+            f"{self.file_format}"
+        )
 
         # parec reads directly from the named PulseAudio source — no shared env vars,
         # so multiple concurrent sessions each get their own isolated subprocess.
@@ -81,14 +93,15 @@ class AudioRecorder:
                 mode='w',
                 samplerate=self.sample_rate,
                 channels=self.channels,
+                format=self.file_format.upper(),
                 subtype='PCM_16'
-            ) as wav_file:
+            ) as out_file:
                 while self.is_recording:
                     data = process.stdout.read(chunk_bytes)
                     if not data:
                         break
                     samples = np.frombuffer(data, dtype='int16').reshape(-1, self.channels)
-                    wav_file.write(samples)
+                    out_file.write(samples)
         finally:
             process.terminate()
             try:

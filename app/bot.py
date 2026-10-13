@@ -11,6 +11,7 @@ from typing import Callable, Optional
 from playwright.async_api import async_playwright, Browser, Page, Playwright
 
 from app.config import settings, DISPLAY_NUMBER, DISPLAY_WIDTH, DISPLAY_HEIGHT, BROWSER_TIMEOUT, RECORDINGS_DIR
+from app.config import DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, RECORDING_EXTENSIONS
 from app.audio_out import MicrophonePlayer
 from app.models import BotStatus
 from app.recorder import AudioRecorder
@@ -94,9 +95,15 @@ class TeamsBot:
         try:
             logger.info(f"Creating audio sink '{sink_name}' for session {self.session_id}")
 
+            # The sink's own format is pinned to what the browser plays and the
+            # recorder reads. Left to PulseAudio's default (44.1 kHz) the audio
+            # was resampled twice on its way into the file, 48 -> 44.1 -> 48 kHz,
+            # which audibly dulls speech.
             cmd = [
                 "pactl", "load-module", "module-null-sink",
                 f"sink_name={sink_name}",
+                f"rate={DEFAULT_SAMPLE_RATE}",
+                f"channels={DEFAULT_CHANNELS}",
                 f"sink_properties=device.description='{description}'"
             ]
 
@@ -704,7 +711,8 @@ class TeamsBot:
             return
 
         Path(RECORDINGS_DIR).mkdir(parents=True, exist_ok=True)
-        filename = f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        extension = RECORDING_EXTENSIONS[settings.recording_format]
+        filename = f"{self.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{extension}"
         self.recording_file = str(Path(RECORDINGS_DIR) / filename)
         
         # Store the object key for later upload (remote backends)

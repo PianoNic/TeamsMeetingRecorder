@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Literal, Optional
 
 
 # Hardcoded configuration
@@ -17,6 +17,10 @@ BROWSER_TIMEOUT = 1440
 API_TITLE = "Teams Meeting Recorder API"
 DEFAULT_SAMPLE_RATE = 48000
 DEFAULT_CHANNELS = 2
+
+# File extension and media type per RECORDING_FORMAT.
+RECORDING_EXTENSIONS = {"wav": ".wav", "flac": ".flac"}
+RECORDING_CONTENT_TYPES = {"wav": "audio/wav", "flac": "audio/flac"}
 
 
 def _read_app_version() -> str:
@@ -43,6 +47,11 @@ class Settings(BaseSettings):
     # Where recordings are written before upload. Defaults to the container path;
     # override with RECORDINGS_DIR to run outside Docker.
     recordings_dir: str = "/app/recordings"
+
+    # Container of the saved recording. Both hold the same 16-bit samples:
+    # "flac" is lossless and a fraction of the size of "wav" (meeting audio
+    # has the same signal on both channels, which FLAC stores almost for free).
+    recording_format: Literal["wav", "flac"] = "wav"
 
     # Backstop on how long a single recording may run. Presence detection depends
     # on Teams' UI, so if that ever stops firing the bot would otherwise record
