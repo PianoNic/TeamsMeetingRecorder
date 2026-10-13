@@ -8,7 +8,7 @@ from pathlib import Path
 from minio import Minio
 from minio.error import S3Error
 
-from app.config import settings, RECORDINGS_DIR
+from app.config import settings, RECORDINGS_DIR, RECORDING_CONTENT_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class MinIOStorage(StorageBackend):
                 bucket_name=self.bucket,
                 object_name=storage_path,
                 file_path=local_path,
-                content_type="audio/wav",
+                content_type=RECORDING_CONTENT_TYPES[settings.recording_format],
             )
             logger.info(f"Uploaded to MinIO: {storage_path}")
             return True
@@ -123,7 +123,7 @@ class AzureBlobStorage(StorageBackend):
         self._public_endpoint = (settings.azure_storage_public_endpoint or "").rstrip("/")
         self._service_client = self._build_service_client()
         self._container_client = self._service_client.get_container_client(self.container)
-        self._content_settings = ContentSettings(content_type="audio/wav")
+        self._content_settings = ContentSettings(content_type=RECORDING_CONTENT_TYPES[settings.recording_format])
 
         if settings.azure_storage_connection_string:
             try:
