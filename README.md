@@ -1,18 +1,16 @@
 <p align="center">
-  <img src="./assets/TeamsRecorderTransparent.png" width="140" alt="TeamsMeetingRecorder logo">
+  <img src="assets/brand/teamsrecorder-logo.png" width="520" alt="TeamsMeetingRecorder logo">
 </p>
-
-<h1 align="center">TeamsMeetingRecorder</h1>
 
 <p align="center">
   <strong>A bot that joins Microsoft Teams meetings and records the audio.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=0d1117&style=flat" alt="visits" /></a>
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsMeetingRecorder?color=0d1117&label=License" alt="License" /></a>
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsMeetingRecorder?include_prereleases&color=0d1117&label=Latest%20Release" alt="Latest release" /></a>
-  <a href="docs/self-hosting.md"><img src="https://img.shields.io/badge/Selfhost-Instructions-0d1117.svg" alt="Self-hosting" /></a>
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=4B3FD1&style=flat" alt="visits" /></a>
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsMeetingRecorder?color=4B3FD1&label=License" alt="License" /></a>
+  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsMeetingRecorder?include_prereleases&color=4B3FD1&label=Latest%20Release" alt="Latest release" /></a>
+  <a href="docs/self-hosting.md"><img src="https://img.shields.io/badge/Selfhost-Instructions-4B3FD1.svg" alt="Self-hosting" /></a>
 </p>
 
 > Not affiliated with Microsoft. Get consent from everyone in the meeting before you record it, see [Legal and privacy](#legal-and-privacy).
