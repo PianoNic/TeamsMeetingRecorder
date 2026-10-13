@@ -50,6 +50,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# uvicorn's per-request lines, switchable with ACCESS_LOG.
+logging.getLogger("uvicorn.access").disabled = not settings.access_log
+
 # Global storage for active sessions
 active_sessions: Dict[str, TeamsBot] = {}
 

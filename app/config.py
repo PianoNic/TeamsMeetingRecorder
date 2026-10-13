@@ -122,6 +122,11 @@ class Settings(BaseSettings):
     # a receiver has to tell the two apart by the "event" field.
     webhook_events: bool = False
 
+    # One line per HTTP request to this API. A caller that polls /sessions or a
+    # health probe on / fills the log with them; set to false to keep only the
+    # recorder's own lines.
+    access_log: bool = True
+
     # How long an undeliverable webhook is retried before it is set aside in
     # RECORDINGS_DIR/.outbox/failed. Retries survive restarts.
     webhook_retry_hours: int = 24
