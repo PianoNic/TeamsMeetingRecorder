@@ -29,6 +29,16 @@ class BotStatus(str, Enum):
 class JoinMeetingRequest(BaseModel):
     """Request model for joining a Teams meeting."""
     meeting_url: str = Field(..., description="Microsoft Teams meeting URL")
+    reference: Optional[str] = Field(
+        None,
+        max_length=200,
+        description=(
+            "The caller's own id for this meeting. It comes back on /sessions, "
+            "/status and the webhook, and a second /join with the same reference "
+            "while that session is still active returns it instead of sending "
+            "another bot, so a join can be retried safely."
+        ),
+    )
     display_name: str = Field(..., description="Display name to use in the meeting", max_length=100)
     record: bool = Field(
         True,
@@ -52,6 +62,7 @@ class RecordingSession(BaseModel):
     """Information about a recording session."""
     session_id: str = Field(..., description="Unique session identifier")
     meeting_url: str
+    reference: Optional[str] = None
     display_name: str
     status: BotStatus
     record: bool = True
@@ -71,6 +82,8 @@ class RecordingResponse(BaseModel):
 class StatusResponse(BaseModel):
     """Response for status checks."""
     session_id: str
+    meeting_url: Optional[str] = None
+    reference: Optional[str] = None
     status: BotStatus
     record: bool = True
     uptime_seconds: Optional[float] = None

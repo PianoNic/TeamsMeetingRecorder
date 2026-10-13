@@ -156,11 +156,25 @@ async def root():
 
 @app.post("/join", response_model=RecordingResponse)
 async def join_meeting(request: JoinMeetingRequest):
-    """Join a Teams meeting and start recording."""
+    """Join a Teams meeting and start recording.
+
+    With a reference the call is idempotent: while a session with the same
+    reference is still active, that session is returned and no second bot is
+    sent. A caller whose first /join timed out can simply send it again.
+    """
+    existing = _find_active_by_reference(request.reference)
+    if existing is not None:
+        return RecordingResponse(
+            success=True,
+            message=f"Already joining or in the meeting with session ID: {existing.session_id}",
+            session=_session_of(existing),
+        )
+
     bot = TeamsBot(
         meeting_url=request.meeting_url,
         display_name=request.display_name,
         record=request.record,
+        reference=request.reference,
     )
     bot.on_stop = _retire_session
     active_sessions[bot.session_id] = bot
@@ -184,14 +198,32 @@ async def join_meeting(request: JoinMeetingRequest):
     return RecordingResponse(
         success=True,
         message=f"Bot joining with session ID: {bot.session_id}",
-        session=RecordingSession(
-            session_id=bot.session_id,
-            meeting_url=request.meeting_url,
-            display_name=request.display_name,
-            status=BotStatus.JOINING,
-            record=bot.record,
-            started_at=bot.started_at
-        )
+        session=_session_of(bot, status=BotStatus.JOINING),
+    )
+
+
+def _find_active_by_reference(reference: Optional[str]) -> Optional[TeamsBot]:
+    """The active session started with this reference, if any.
+
+    Runs without an await between the lookup and the registration in
+    join_meeting, so two concurrent joins cannot both miss each other.
+    """
+    if not reference:
+        return None
+    return next((b for b in active_sessions.values() if b.reference == reference), None)
+
+
+def _session_of(bot: TeamsBot, status: Optional[BotStatus] = None) -> RecordingSession:
+    return RecordingSession(
+        session_id=bot.session_id,
+        meeting_url=bot.meeting_url,
+        reference=bot.reference,
+        display_name=bot.display_name,
+        status=status or bot.status,
+        record=bot.record,
+        started_at=bot.started_at,
+        stopped_at=bot.stopped_at,
+        recording_file=bot.recording_file,
     )
 
 
@@ -230,6 +262,8 @@ async def get_status(session_id: str):
 
     return StatusResponse(
         session_id=bot.session_id,
+        meeting_url=bot.meeting_url,
+        reference=bot.reference,
         status=bot.status,
         record=bot.record,
         uptime_seconds=bot.get_uptime(),
@@ -244,6 +278,8 @@ async def list_sessions():
     """List all active recording sessions."""
     return [{
         "session_id": sid,
+        "meeting_url": bot.meeting_url,
+        "reference": bot.reference,
         "display_name": bot.display_name,
         "status": bot.status.value,
         "record": bot.record,

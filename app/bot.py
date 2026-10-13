@@ -35,7 +35,8 @@ class TeamsBot:
         self,
         meeting_url: str,
         display_name: str,
-        record: bool = True
+        record: bool = True,
+        reference: Optional[str] = None,
     ):
         """
         Initialize the Teams bot.
@@ -46,9 +47,12 @@ class TeamsBot:
             record: Whether to record the meeting. False joins the meeting
                 without capturing anything, for a bot that is only there to
                 speak.
+            reference: The caller's own id for this meeting, echoed on every
+                report about the session.
         """
         self.session_id = str(uuid.uuid4())
         self.meeting_url = meeting_url
+        self.reference = reference
         self.display_name = display_name
         self.record = record
 
@@ -747,6 +751,7 @@ class TeamsBot:
                     webhook_payload = WebhookPayload(
                         session_id=self.session_id,
                         meeting_url=self.meeting_url,
+                        reference=self.reference,
                         file_location="",
                         started_at=self.started_at,
                         stopped_at=self.stopped_at
@@ -814,6 +819,7 @@ class TeamsBot:
                 webhook_payload = WebhookPayload(
                     session_id=self.session_id,
                     meeting_url=self.meeting_url,
+                    reference=self.reference,
                     file_location=file_location,
                     started_at=self.started_at,
                     stopped_at=self.stopped_at

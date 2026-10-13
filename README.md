@@ -106,6 +106,18 @@ curl -X POST http://localhost:8000/stop/{session_id}
 curl http://localhost:8000/sessions
 ```
 
+### Retrying a join safely
+
+Pass your own id for the meeting as `reference`:
+
+```bash
+curl -X POST http://localhost:8000/join \
+  -H "Content-Type: application/json" \
+  -d '{"meeting_url": "https://teams.microsoft.com/l/meetup-join/...", "display_name": "Recording Bot", "reference": "order-4711"}'
+```
+
+While a session with that reference is still active, another `/join` with the same reference returns that session instead of sending a second bot. So when a `/join` times out you can send it again without ending up with two bots in the meeting. The reference (up to 200 characters) comes back on `/sessions`, `/status` and the webhook, next to `meeting_url`, so every report can be matched to your own record. Without a reference nothing changes: every `/join` sends a new bot.
+
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/` | GET | Health probe and version. Never requires auth. |
