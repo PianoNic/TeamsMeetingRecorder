@@ -240,16 +240,7 @@ async def stop_recording(session_id: str):
     return RecordingResponse(
         success=True,
         message=f"Recording stopped for {session_id}",
-        session=RecordingSession(
-            session_id=bot.session_id,
-            meeting_url=bot.meeting_url,
-            display_name=bot.display_name,
-            status=bot.status,
-            record=bot.record,
-            started_at=bot.started_at,
-            stopped_at=bot.stopped_at,
-            recording_file=bot.recording_file
-        )
+        session=_session_of(bot),
     )
 
 
