@@ -55,10 +55,12 @@ While a session with that reference is still active, another `/join` with the sa
 
 | Status | Meaning |
 |---|---|
-| `joining` | Asked to join, waiting in the lobby |
+| `joining` | Starting the browser and opening the meeting |
+| `lobby` | Asked to be let in, waiting for someone to admit it |
 | `recording` | In the meeting and recording |
 | `connected` | In the meeting but not recording, joined with `record: false` |
 | `denied` | An organiser declined the bot from the lobby. It will not get in; retrying needs someone to let it through |
 | `not_admitted` | Nobody accepted or declined the bot before `TEAMS_WAIT_FOR_LOBBY` ran out. Worth retrying later |
 | `error` | Something went wrong: a browser, audio or storage failure. See `error_message` |
 | `stopped` | Finished normally. The recording is at `recording_file` or already uploaded |
+| `interrupted` | The recorder stopped while the session ran (crash, restart). Reported on the next start with what was recorded until then, see [Webhooks](webhooks.md#interrupted-sessions) |

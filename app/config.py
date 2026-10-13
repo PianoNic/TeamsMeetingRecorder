@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal, Optional
 
 
@@ -117,6 +117,15 @@ class Settings(BaseSettings):
     # Called when a recording finishes saving (both local and MinIO)
     webhook_url: Optional[str] = None
 
+    # Also send a webhook for every status change while a session runs
+    # (joining, lobby, recording, ...), not only when it ends. Off by default:
+    # a receiver has to tell the two apart by the "event" field.
+    webhook_events: bool = False
+
+    # How long an undeliverable webhook is retried before it is set aside in
+    # RECORDINGS_DIR/.outbox/failed. Retries survive restarts.
+    webhook_retry_hours: int = 24
+
     # Optional shared secret sent as the X-Webhook-Secret header on webhook POSTs
     # for the receiver to verify. Set via env WEBHOOK_SECRET. Leave unset to send
     # no signature.
@@ -142,9 +151,7 @@ class Settings(BaseSettings):
             value = re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), value)
         return value
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 settings = Settings()

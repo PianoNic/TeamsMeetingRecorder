@@ -23,6 +23,10 @@ class WebhookPayload:
         started_at: datetime,
         stopped_at: datetime,
         reference: Optional[str] = None,
+        event: str = "finished",
+        status: Optional[str] = None,
+        error_message: Optional[str] = None,
+        sequence: int = 0,
     ):
         """
         Initialize webhook payload.
@@ -41,6 +45,10 @@ class WebhookPayload:
         self.started_at = started_at
         self.stopped_at = stopped_at
         self.reference = reference
+        self.event = event
+        self.status = status
+        self.error_message = error_message
+        self.sequence = sequence
 
     def to_dict(self) -> dict:
         """Convert payload to dictionary for JSON serialization."""
@@ -48,19 +56,23 @@ class WebhookPayload:
             "session_id": self.session_id,
             "meeting_url": self.meeting_url,
             "reference": self.reference,
+            "event": self.event,
+            "status": self.status,
+            "error_message": self.error_message,
+            "sequence": self.sequence,
             "file_location": self.file_location,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "stopped_at": self.stopped_at.isoformat() if self.stopped_at else None
         }
 
 
-async def send_webhook(webhook_url: str, payload: WebhookPayload) -> bool:
+async def send_webhook(webhook_url: str, payload) -> bool:
     """
     Send webhook notification asynchronously.
 
     Args:
         webhook_url: URL to send the webhook to
-        payload: WebhookPayload instance to send
+        payload: WebhookPayload or an already built dict
 
     Returns:
         True if webhook was sent successfully, False otherwise
@@ -79,7 +91,7 @@ async def send_webhook(webhook_url: str, payload: WebhookPayload) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 webhook_url,
-                json=payload.to_dict(),
+                json=payload.to_dict() if hasattr(payload, "to_dict") else payload,
                 timeout=aiohttp.ClientTimeout(total=30),
                 headers=headers
             ) as response:

@@ -23,7 +23,8 @@
 - **Several meetings at once**: every session gets its own browser and audio sink, so recordings never mix.
 - **Clean audio**: 48 kHz straight from the browser, as WAV or lossless FLAC at a fraction of the size.
 - **Storage of your choice**: local disk, Azure Blob (or Azurite) or any S3-compatible bucket.
-- **Webhooks**: a POST when a recording is done, optionally signed.
+- **Webhooks that arrive**: a POST when a session ends and, if you want, at every step on the way. Retried until delivered, even across restarts.
+- **Nothing gets stuck**: a session cut off by a crash or restart is reported on the next start, with everything it recorded until then.
 - **Safe to retry**: tag a join with your own reference and a repeated `/join` returns the running session instead of a second bot.
 - **Speaks too**: play a file or a live stream into the meeting through the bot's microphone.
 
