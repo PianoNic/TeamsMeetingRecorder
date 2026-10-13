@@ -35,6 +35,10 @@ from app.audio_out import (
 )
 from app.bot import TeamsBot
 from app.config import RECORDINGS_DIR, MEDIA_DIR, API_TITLE, API_VERSION, BROWSER_TIMEOUT, settings
+from app import outbox
+from app.recovery import recover_interrupted_sessions
+from app.storage import get_storage
+from app.webhook import send_webhook
 
 # Configure logging
 logging.basicConfig(
@@ -87,13 +91,27 @@ async def lifespan(app: FastAPI):
     Path(MEDIA_DIR).mkdir(parents=True, exist_ok=True)
     if settings.mic_playback_enabled:
         logger.info(f"Microphone playback enabled; media directory: {MEDIA_DIR}")
+
+    # Sessions the last run never finished (crash, restart) are reported as
+    # interrupted, with what they recorded; then the outbox delivers that and
+    # anything else still waiting from before.
+    await asyncio.to_thread(recover_interrupted_sessions)
+    delivery = asyncio.create_task(outbox.run_forever(send_webhook, get_storage))
+
     yield
+
     logger.info("Shutting down - cleaning up sessions")
     for sid, bot in list(active_sessions.items()):
         try:
             await bot.stop()
         except Exception as e:
             logger.error(f"Cleanup error for {sid}: {e}")
+    # One last pass for what the stops just queued; anything left goes out on the next start.
+    try:
+        await asyncio.wait_for(outbox.deliver_due(send_webhook, get_storage()), timeout=20)
+    except Exception as e:
+        logger.warning(f"Final outbox pass did not finish, the rest goes out on the next start: {e}")
+    delivery.cancel()
 
 
 app = FastAPI(

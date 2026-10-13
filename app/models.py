@@ -1,6 +1,6 @@
 """Data models for the Teams Meeting Recorder API."""
 
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, ConfigDict, HttpUrl, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -9,7 +9,10 @@ from enum import Enum
 class BotStatus(str, Enum):
     """Status of the recording bot."""
     IDLE = "idle"
+    # Starting the browser and opening the meeting.
     JOINING = "joining"
+    # Asked to be let in, waiting for someone in the meeting to admit it.
+    LOBBY = "lobby"
     RECORDING = "recording"
     # In the meeting but deliberately not recording (record=false): the bot is
     # there only to play audio in. Distinct from RECORDING so a caller polling
@@ -24,6 +27,9 @@ class BotStatus(str, Enum):
     NOT_ADMITTED = "not_admitted"
     ERROR = "error"
     STOPPED = "stopped"
+    # The recorder stopped while the session was running (a crash, a restart).
+    # Reported on the next start, with whatever had been recorded until then.
+    INTERRUPTED = "interrupted"
 
 
 class JoinMeetingRequest(BaseModel):
@@ -48,14 +54,13 @@ class JoinMeetingRequest(BaseModel):
         ),
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
-                "display_name": "Recording Bot",
-                "record": True
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
+            "display_name": "Recording Bot",
+            "record": True
         }
+    })
 
 
 class RecordingSession(BaseModel):
@@ -102,10 +107,9 @@ class PlayFileRequest(BaseModel):
     volume: float = Field(1.0, gt=0, le=4.0, description="Playback gain, 1.0 = unchanged")
     unmute: bool = Field(True, description="Unmute the bot first, so the meeting can hear it")
 
-    class Config:
-        json_schema_extra = {
-            "example": {"path": "hold-music.mp3", "loop": True, "volume": 1.0, "unmute": True}
-        }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {"path": "hold-music.mp3", "loop": True, "volume": 1.0, "unmute": True}
+    })
 
 
 class OpenStreamRequest(BaseModel):
@@ -120,8 +124,7 @@ class OpenStreamRequest(BaseModel):
     volume: float = Field(1.0, gt=0, le=4.0, description="Playback gain, 1.0 = unchanged")
     unmute: bool = Field(True, description="Unmute the bot first, so the meeting can hear it")
 
-    class Config:
-        json_schema_extra = {"example": {"format": None, "volume": 1.0, "unmute": True}}
+    model_config = ConfigDict(json_schema_extra={"example": {"format": None, "volume": 1.0, "unmute": True}})
 
 
 class StreamResponse(BaseModel):

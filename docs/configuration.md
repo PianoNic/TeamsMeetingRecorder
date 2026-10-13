@@ -35,6 +35,8 @@ Both formats contain exactly the same audio, bit for bit. WAV stores it as it is
 | Variable | Default | Description |
 |---|---|---|
 | `WEBHOOK_URL` | – | Called when a session ends. Unset disables webhooks |
+| `WEBHOOK_EVENTS` | `false` | Also call it for every status change while a session runs (`joining`, `lobby`, `recording`, ...) |
+| `WEBHOOK_RETRY_HOURS` | `24` | How long an undeliverable webhook is retried before it is set aside in `RECORDINGS_DIR/.outbox/failed` |
 | `WEBHOOK_SECRET` | – | Sent as `X-Webhook-Secret` for the receiver to verify. Unset sends no signature |
 | `BOT_ACCESS_TOKEN` | – | Protects every endpoint except `/` and `/audio/{id}/ingest/{token}`. Requires `Authorization: Bearer <token>` or `X-API-Key`. Unset leaves the API open |
 

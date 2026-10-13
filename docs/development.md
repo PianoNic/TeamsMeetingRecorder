@@ -14,6 +14,6 @@ docker run --rm -p 8000:8000 --shm-size=2gb --init teams-recorder:dev
 The tests fake PulseAudio, the browser and `parec`, so they run anywhere Python runs:
 
 ```bash
-pip install -r requirements.txt pytest httpx
+pip install -r requirements.txt pytest httpx2
 python -m pytest tests/
 ```

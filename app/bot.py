@@ -16,7 +16,7 @@ from app.audio_out import MicrophonePlayer
 from app.models import BotStatus
 from app.recorder import AudioRecorder
 from app.storage import get_storage
-from app.webhook import send_webhook, WebhookPayload
+from app import journal, outbox
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,10 @@ class TeamsBot:
         self.record = record
 
         self.status = BotStatus.IDLE
+        # Counts this session's webhooks, so a receiver can drop one that arrives
+        # after a later one (delivery retries can reorder across sessions).
+        self.sequence = 0
+        self._finished = False
         self.started_at: Optional[datetime] = None
         self.recording_started_at: Optional[datetime] = None
         self.stopped_at: Optional[datetime] = None
@@ -89,6 +93,80 @@ class TeamsBot:
         self._on_stop_fired = False
 
         logger.info(f"Initialized bot with session ID: {self.session_id}")
+
+    # Reported as an event (with WEBHOOK_EVENTS) when entered.
+    PROGRESS_STATES = (
+        BotStatus.JOINING, BotStatus.LOBBY, BotStatus.RECORDING, BotStatus.CONNECTED, BotStatus.LEAVING,
+    )
+
+    def _set_status(self, status: BotStatus) -> None:
+        """Every status change goes through here: journal it, and report it when asked to."""
+        self.status = status
+        if status in self.PROGRESS_STATES:
+            self._write_journal()
+            if settings.webhook_events:
+                self._enqueue("status")
+
+    def _write_journal(self) -> None:
+        try:
+            journal.write(self.session_id, {
+                "session_id": self.session_id,
+                "meeting_url": self.meeting_url,
+                "reference": self.reference,
+                "status": self.status.value,
+                "sequence": self.sequence,
+                "started_at": self.started_at.isoformat() if self.started_at else None,
+                "recording_file": self.recording_file,
+                "storage_path": self.storage_path,
+                "sink_name": self.sink_name,
+                "mic_sink_name": self.mic_sink_name,
+                "mic_source_name": self.mic_source_name,
+            })
+        except OSError as e:
+            # Losing the journal only costs crash recovery for this session, never the session.
+            logger.error(f"Could not journal session {self.session_id}: {e}")
+
+    def _enqueue(self, event: str, file_location: str = "", upload_from: Optional[str] = None,
+                 upload_to: Optional[str] = None) -> None:
+        self.sequence += 1
+        now = datetime.now()
+        try:
+            outbox.enqueue(
+                {
+                    "event": event,
+                    "session_id": self.session_id,
+                    "meeting_url": self.meeting_url,
+                    "reference": self.reference,
+                    "status": self.status.value,
+                    "error_message": self.error_message,
+                    "file_location": file_location,
+                    "started_at": self.started_at.isoformat() if self.started_at else None,
+                    "stopped_at": self.stopped_at.isoformat() if self.stopped_at else None,
+                    "sequence": self.sequence,
+                    "occurred_at": now.isoformat(),
+                },
+                upload_from=upload_from,
+                upload_to=upload_to,
+            )
+        except OSError as e:
+            logger.error(f"Could not queue the {event} webhook for {self.session_id}: {e}")
+
+    def _finish(self) -> None:
+        """Report the session's end through the outbox and drop its journal entry.
+
+        A recording for remote storage is uploaded by the outbox item itself, so
+        a failed upload is retried instead of the webhook pointing at a local
+        file the receiver cannot reach.
+        """
+        if self._finished:
+            return  # stop() can be reached twice (presence monitor and shutdown); report once
+        self._finished = True
+        storage = get_storage()
+        if self.recording_file and storage.uses_remote_storage() and self.storage_path:
+            self._enqueue("finished", upload_from=self.recording_file, upload_to=self.storage_path)
+        else:
+            self._enqueue("finished", file_location=self.recording_file or "")
+        journal.remove(self.session_id)
 
     def _create_null_sink(self, sink_name: str, description: str) -> str:
         """Create one virtual audio sink and return its module id."""
@@ -326,6 +404,7 @@ class TeamsBot:
             await self._dismiss_no_devices_prompt(self.NO_DEVICES_RECHECK_MS)
             await self.page.locator("button[data-tid='prejoin-join-button']").first.click()
             logger.info("Request Joining meeting...")
+            self._set_status(BotStatus.LOBBY)
         except Exception as e:
             logger.error(f"Problem clicking on join: {e}")
 
@@ -706,7 +785,7 @@ class TeamsBot:
             # The clock still starts, so max_recording_minutes caps how long a
             # speak-only bot can sit in a meeting just as it caps a recording.
             self.recording_started_at = datetime.now()
-            self.status = BotStatus.CONNECTED
+            self._set_status(BotStatus.CONNECTED)
             logger.info("Joined without recording (record=false)")
             return
 
@@ -724,7 +803,7 @@ class TeamsBot:
         )
         self.audio_recorder.start()
         self.recording_started_at = datetime.now()
-        self.status = BotStatus.RECORDING
+        self._set_status(BotStatus.RECORDING)
         logger.info(f"Recording from '{self.monitor_name}' to: {self.recording_file}")
 
     async def start(self):
@@ -732,7 +811,7 @@ class TeamsBot:
         try:
             logger.info(f"Starting session {self.session_id}")
             self.started_at = datetime.now()
-            self.status = BotStatus.JOINING
+            self._set_status(BotStatus.JOINING)
 
             await self._setup_browser()
             await self._join_meeting()
@@ -753,20 +832,9 @@ class TeamsBot:
             self.error_message = str(e)
             self.stopped_at = datetime.now()
 
-            # Send failure webhook notification if configured
-            if settings.webhook_url and self.started_at and self.stopped_at:
-                try:
-                    webhook_payload = WebhookPayload(
-                        session_id=self.session_id,
-                        meeting_url=self.meeting_url,
-                        reference=self.reference,
-                        file_location="",
-                        started_at=self.started_at,
-                        stopped_at=self.stopped_at
-                    )
-                    await send_webhook(settings.webhook_url, webhook_payload)
-                except Exception as webhook_error:
-                    logger.error(f"Error sending failure webhook: {webhook_error}")
+            # Says why (denied, not admitted, error) in "status", so the receiver
+            # does not have to ask.
+            self._finish()
 
             await self.cleanup()
             raise
@@ -795,48 +863,12 @@ class TeamsBot:
             self.audio_recorder.stop()
             logger.info("Recording stopped")
 
-            # Upload to remote storage (MinIO or Azure Blob)
-            storage = get_storage()
-            if storage.uses_remote_storage() and self.recording_file and self.storage_path:
-                logger.info(f"Uploading recording to storage: {self.storage_path}")
-                success = storage.upload_file(self.recording_file, self.storage_path)
-                if success:
-                    logger.info("Successfully uploaded to storage")
-                    try:
-                        Path(self.recording_file).unlink(missing_ok=True)
-                        logger.info(f"Removed local temporary file: {self.recording_file}")
-                    except Exception as e:
-                        logger.warning(f"Failed to remove local file: {e}")
-                else:
-                    logger.error("Failed to upload to storage, keeping local file")
-
-        # Send webhook notification if configured. A speak-only session has no
-        # file to point at but still finished, so it reports an empty location
-        # rather than going silent - same shape the failure webhook already uses.
-        finished = self.recording_file or not self.record
-        if settings.webhook_url and finished and self.started_at and self.stopped_at:
-            try:
-                storage = get_storage()
-                if not self.recording_file:
-                    file_location = ""
-                elif storage.uses_remote_storage() and self.storage_path:
-                    file_location = storage.get_webhook_file_location(self.storage_path)
-                else:
-                    file_location = self.recording_file
-
-                webhook_payload = WebhookPayload(
-                    session_id=self.session_id,
-                    meeting_url=self.meeting_url,
-                    reference=self.reference,
-                    file_location=file_location,
-                    started_at=self.started_at,
-                    stopped_at=self.stopped_at
-                )
-                await send_webhook(settings.webhook_url, webhook_payload)
-            except Exception as e:
-                logger.error(f"Error sending webhook: {e}")
-
+        # Upload (remote storage) and webhook go through the outbox, which retries
+        # both until they succeed. A speak-only session has no file but still
+        # finished, so it reports an empty location rather than going silent.
         self.status = BotStatus.STOPPED
+        if self.started_at:
+            self._finish()
         await self.cleanup()
 
     async def cleanup(self):
