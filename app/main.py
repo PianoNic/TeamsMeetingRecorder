@@ -488,7 +488,10 @@ async def open_stream(session_id: str, request: OpenStreamRequest, http_request:
     )
 
 
-@app.api_route("/audio/{session_id}/ingest/{token}", methods=["PUT", "POST"])
+# One function for both methods, each with its own operation id: a shared one
+# makes the OpenAPI document invalid for client generators.
+@app.put("/audio/{session_id}/ingest/{token}", operation_id="ingest_audio_put")
+@app.post("/audio/{session_id}/ingest/{token}", operation_id="ingest_audio_post")
 async def ingest(session_id: str, token: str, request: Request):
     """Receive a live audio stream and play it through the microphone.
 
