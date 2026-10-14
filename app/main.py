@@ -53,6 +53,10 @@ logger = logging.getLogger(__name__)
 # uvicorn's per-request lines, switchable with ACCESS_LOG.
 logging.getLogger("uvicorn.access").disabled = not settings.access_log
 
+# The Azure SDK logs every request and response with its headers at INFO, one line per
+# uploaded block; only its warnings and errors are worth keeping.
+logging.getLogger("azure").setLevel(logging.WARNING)
+
 # Global storage for active sessions
 active_sessions: Dict[str, TeamsBot] = {}
 
@@ -87,6 +91,7 @@ def _lookup_session(session_id: str) -> Optional[TeamsBot]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager."""
+    logger.info(f"TeamsRecorder {API_VERSION} starting")
     logger.info(f"Lobby timeout: {settings.teams_wait_for_lobby} minutes")
     logger.info(f"Browser operation timeout: {BROWSER_TIMEOUT} seconds ({BROWSER_TIMEOUT / 60:.1f} minutes)")
     logger.info("Bot will automatically leave when alone in the meeting")
