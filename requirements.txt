@@ -9,7 +9,7 @@ playwright==1.48.0
 python-dotenv==1.0.1
 soundfile==0.12.1
 numpy==1.26.3
-minio==7.2.10
+boto3==1.43.102
 azure-storage-blob==12.29.0
 azure-identity==1.25.3
 aiohttp==3.10.1

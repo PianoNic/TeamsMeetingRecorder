@@ -77,21 +77,30 @@ AZURE_STORAGE_ACCOUNT_URL=${Storage__BlobServiceUri}
 AZURE_STORAGE_CONTAINER=${Storage__BlobContainerName}
 ```
 
-### MinIO or S3
+### S3 (any provider)
+
+One backend for every S3-compatible store. Leave `S3_ENDPOINT_URL` unset for AWS:
 
 ```env
-STORAGE_BACKEND=minio
-MINIO_ENDPOINT=minio.example.com:9000
-MINIO_ACCESS_KEY=your-access-key
-MINIO_SECRET_KEY=your-secret-key
-MINIO_BUCKET=recordings
-MINIO_SECURE=true
+STORAGE_BACKEND=s3
+S3_BUCKET=recordings
+S3_REGION=eu-central-1
+S3_ACCESS_KEY_ID=your-access-key
+S3_SECRET_ACCESS_KEY=your-secret-key
 ```
 
-To run MinIO locally next to the recorder:
+Other providers only add their endpoint, and self-hosted servers usually want path-style addressing:
 
-```bash
-docker compose -f minio.compose.yml up -d
-```
+| Provider | `S3_ENDPOINT_URL` | `S3_REGION` | `S3_FORCE_PATH_STYLE` |
+|---|---|---|---|
+| Cloudflare R2 | `https://<account-id>.r2.cloudflarestorage.com` | `auto` | – |
+| Hetzner Object Storage | `https://fsn1.your-objectstorage.com` | `fsn1` | – |
+| Wasabi | `https://s3.eu-central-1.wasabisys.com` | `eu-central-1` | – |
+| Backblaze B2 | `https://s3.eu-central-003.backblazeb2.com` | `eu-central-003` | – |
+| Self-hosted (Ceph, Garage, SeaweedFS, ...) | `http://s3.internal:9000` | any | `true` |
 
-Console on <http://localhost:9001>, API on <http://localhost:9000>, recorder on <http://localhost:8000>. The bucket is created if it is missing.
+Without `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` the default AWS credential chain is used, e.g. the instance role on EC2 or ECS. The bucket is created when it is missing and the keys may do so; keys scoped to one existing bucket are the normal case.
+
+The webhook's `file_location` is `{bucket}/{session}/{file}`, or a full URL when `S3_PUBLIC_ENDPOINT` is set.
+
+`STORAGE_BACKEND=minio` and the `MINIO_*` settings were replaced by this backend: a MinIO server works as a self-hosted S3 endpoint with `S3_FORCE_PATH_STYLE=true`.

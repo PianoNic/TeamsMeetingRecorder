@@ -19,16 +19,18 @@ Both formats contain exactly the same audio, bit for bit. WAV stores it as it is
 
 | Variable | Default | Description |
 |---|---|---|
-| `STORAGE_BACKEND` | `local` | `local`, `azure` or `minio` |
+| `STORAGE_BACKEND` | `local` | `local`, `azure` or `s3` |
 | `AZURE_STORAGE_CONNECTION_STRING` | – | Azure or Azurite connection string. Either this or `AZURE_STORAGE_ACCOUNT_URL` |
 | `AZURE_STORAGE_ACCOUNT_URL` | – | Account URL authenticated with the managed identity instead of a key. The container must already exist |
 | `AZURE_STORAGE_CONTAINER` | `meeting-recordings` | Blob container name |
 | `AZURE_STORAGE_PUBLIC_ENDPOINT` | – | Public blob base URL used in the webhook `file_location` |
-| `MINIO_ENDPOINT` | – | e.g. `minio.example.com:9000` |
-| `MINIO_ACCESS_KEY` | – | MinIO access key |
-| `MINIO_SECRET_KEY` | – | MinIO secret key |
-| `MINIO_BUCKET` | `recordings` | Bucket name |
-| `MINIO_SECURE` | `true` | Use HTTPS for MinIO |
+| `S3_BUCKET` | `recordings` | Bucket name |
+| `S3_ENDPOINT_URL` | – | S3 endpoint of the provider. Unset means AWS |
+| `S3_REGION` | – | Region, e.g. `eu-central-1`, or `auto` for Cloudflare R2 |
+| `S3_ACCESS_KEY_ID` | – | Access key. Unset uses the default AWS credential chain (instance role, `AWS_*` variables) |
+| `S3_SECRET_ACCESS_KEY` | – | Secret key |
+| `S3_FORCE_PATH_STYLE` | `false` | Put the bucket in the path instead of the host name; most self-hosted servers need `true` |
+| `S3_PUBLIC_ENDPOINT` | – | Public base URL used in the webhook `file_location` |
 
 ## Webhooks and access
 
