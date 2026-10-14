@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/teamsrecorder-logo.png" width="520" alt="TeamsMeetingRecorder logo">
+  <img src="assets/brand/teamsrecorder-logo.png" width="520" alt="TeamsRecorder logo">
 </p>
 
 <p align="center">
@@ -7,9 +7,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=4B3FD1&style=flat" alt="visits" /></a>
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsMeetingRecorder?color=4B3FD1&label=License" alt="License" /></a>
-  <a href="https://github.com/PianoNic/TeamsMeetingRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsMeetingRecorder?include_prereleases&color=4B3FD1&label=Latest%20Release" alt="Latest release" /></a>
+  <a href="https://github.com/PianoNic/TeamsRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=4B3FD1&style=flat" alt="visits" /></a>
+  <a href="https://github.com/PianoNic/TeamsRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsRecorder?color=4B3FD1&label=License" alt="License" /></a>
+  <a href="https://github.com/PianoNic/TeamsRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsRecorder?include_prereleases&color=4B3FD1&label=Latest%20Release" alt="Latest release" /></a>
   <a href="docs/self-hosting.md"><img src="https://img.shields.io/badge/Selfhost-Instructions-4B3FD1.svg" alt="Self-hosting" /></a>
 </p>
 
