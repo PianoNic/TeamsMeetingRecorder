@@ -1,0 +1,53 @@
+direction: right
+
+classes: {
+  step: {
+    style: {
+      fill: "#262150"
+      stroke: "#7A68F0"
+      font-color: "#E6E1FF"
+      border-radius: 20
+    }
+  }
+  good: {
+    style: {
+      fill: "#4B3FD1"
+      stroke: "#2E2596"
+      font-color: "#FFFFFF"
+      border-radius: 20
+      bold: true
+    }
+  }
+  end: {
+    style: {
+      fill: "#3A1520"
+      stroke: "#FF4F64"
+      font-color: "#FFC2CB"
+      border-radius: 20
+    }
+  }
+}
+
+join: POST /join {shape: circle; style.fill: "#C9BCFF"; style.font-color: "#14123A"; width: 90}
+joining: joining {class: step}
+lobby: lobby {class: step}
+recording: recording {class: good}
+stopped: stopped {class: good}
+done: "upload +\nwebhook" {shape: hexagon; style.fill: "#1C2A55"; style.stroke: "#5B8DF6"}
+
+denied: denied {class: end}
+not_admitted: not_admitted {class: end}
+error: error {class: end}
+interrupted: interrupted {class: end}
+
+join -> joining
+joining -> lobby
+lobby -> recording: admitted
+recording -> stopped: ended
+stopped -> done
+
+joining -> error: failure
+lobby -> denied: declined
+lobby -> not_admitted: timed out
+recording -> interrupted: restart
+interrupted -> done: next start {style.stroke-dash: 4}

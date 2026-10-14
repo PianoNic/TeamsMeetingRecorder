@@ -1,0 +1,81 @@
+direction: right
+
+classes: {
+  brand: {
+    style: {
+      fill: "#F6F4FF"
+      stroke: "#4B3FD1"
+      stroke-width: 3
+      font-color: "#2E2596"
+      border-radius: 16
+      bold: true
+      shadow: true
+    }
+  }
+  inner: {
+    style: {
+      fill: "#4B3FD1"
+      stroke: "#2E2596"
+      font-color: "#FFFFFF"
+      border-radius: 12
+      bold: true
+    }
+  }
+  soft: {
+    style: {
+      fill: "#EEEBFF"
+      stroke: "#7A68F0"
+      font-color: "#14123A"
+      border-radius: 12
+    }
+  }
+  store: {
+    shape: cylinder
+    style: {
+      fill: "#E6EEFF"
+      stroke: "#5B8DF6"
+      font-color: "#14123A"
+    }
+  }
+}
+
+app: Your app {
+  class: soft
+}
+
+recorder: TeamsRecorder {
+  class: brand
+  grid-rows: 2
+  vertical-gap: 60
+  label.near: outside-top-center
+  browser: Chromium\none per meeting {class: soft}
+  audio: PulseAudio sink\none per meeting {class: soft}
+  browser -> audio: meeting audio
+}
+
+teams: Microsoft Teams {
+  class: soft
+  grid-rows: 2
+  vertical-gap: 60
+  label.near: outside-top-center
+  style.bold: true
+  lobby: Lobby {class: inner}
+  meeting: Meeting {class: inner}
+  lobby -> meeting: admitted
+}
+
+storage: Recordings {
+  class: store
+  label: "Recordings\nlocal · Azure Blob · S3"
+}
+
+app -> recorder: "1  POST /join"
+recorder -> teams: "2  joins as a guest"
+recorder -> storage: "3  FLAC upload"
+recorder -> app: "4  webhook: finished" {
+  style.stroke-dash: 4
+  style.stroke: "#7A68F0"
+}
+app -> storage: "5  fetch the file" {
+  style.stroke-dash: 4
+}

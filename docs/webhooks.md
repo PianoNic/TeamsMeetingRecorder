@@ -32,7 +32,7 @@ WEBHOOK_EVENTS=true
 | `session_id` | string | Session id (UUID) |
 | `meeting_url` | string | The meeting that was joined |
 | `reference` | string or null | Your `reference` from `/join`, `null` when none was given |
-| `status` | string | The [session status](./api.md#session-status). For `finished`: `stopped`, `denied`, `not_admitted`, `error` or `interrupted` |
+| `status` | string | The [session status](./how-it-works.md#statuses). For `finished`: `stopped`, `denied`, `not_admitted`, `error` or `interrupted` |
 | `error_message` | string or null | Why it failed, when it did |
 | `file_location` | string | Local path, blob path or object path (a full URL with a public endpoint configured). Empty when there is no recording |
 | `started_at`, `stopped_at` | ISO 8601 | When the session started and stopped |
@@ -63,6 +63,46 @@ Check the secret, ignore what you have already seen, answer quickly and do the r
 
 ::: code-group
 
+```csharp [C# (ASP.NET Core)]
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Serialization;
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+var secret = Encoding.UTF8.GetBytes("a-long-random-value");
+var lastSequence = new ConcurrentDictionary<string, int>(); // use your database in production
+
+app.MapPost("/hooks/recorder", (HttpRequest request, RecorderEvent e) =>
+{
+    var given = Encoding.UTF8.GetBytes(request.Headers["X-Webhook-Secret"].ToString());
+    if (!CryptographicOperations.FixedTimeEquals(given, secret))
+        return Results.Unauthorized();
+
+    if (e.Sequence <= lastSequence.GetValueOrDefault(e.SessionId))
+        return Results.Ok(); // already handled
+    lastSequence[e.SessionId] = e.Sequence;
+
+    if (e.Event == "finished" && !string.IsNullOrEmpty(e.FileLocation))
+    {
+        // queue the recording for processing
+    }
+    return Results.Ok();
+});
+
+app.Run();
+
+record RecorderEvent(
+    [property: JsonPropertyName("event")] string Event,
+    [property: JsonPropertyName("session_id")] string SessionId,
+    [property: JsonPropertyName("reference")] string? Reference,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("file_location")] string? FileLocation,
+    [property: JsonPropertyName("sequence")] int Sequence);
+```
+
 ```python [Python (FastAPI)]
 import hmac
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -72,7 +112,10 @@ SECRET = "a-long-random-value"
 last_sequence: dict[str, int] = {}  # use your database in production
 
 @app.post("/hooks/recorder")
-async def recorder_webhook(request: Request, x_webhook_secret: str = Header(default="")):
+async def recorder_webhook(
+    request: Request,
+    x_webhook_secret: str = Header(default=""),
+):
     if not hmac.compare_digest(x_webhook_secret, SECRET):
         raise HTTPException(status_code=401)
 

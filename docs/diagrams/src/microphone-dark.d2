@@ -1,0 +1,68 @@
+direction: right
+grid-rows: 2
+vertical-gap: 120
+
+classes: {
+  group: {
+    label.near: outside-top-center
+    style: {
+      fill: "#1E1A45"
+      stroke: "#7A68F0"
+      stroke-width: 3
+      font-color: "#C9BCFF"
+      border-radius: 16
+      bold: true
+    }
+  }
+  node: {
+    style: {
+      fill: "#262150"
+      stroke: "#7A68F0"
+      font-color: "#E6E1FF"
+      border-radius: 12
+    }
+  }
+  device: {
+    style: {
+      fill: "#4B3FD1"
+      stroke: "#2E2596"
+      font-color: "#FFFFFF"
+      border-radius: 12
+      bold: true
+    }
+  }
+}
+
+hears: What the bot hears {
+  class: group
+  direction: right
+  browser: Chromium {class: node}
+  sink: "teams_sink_<id>" {class: device}
+  parec: parec {class: node}
+  file: ".wav / .flac" {
+    shape: page
+    style: {fill: "#1C2A55"; stroke: "#5B8DF6"; font-color: "#E6E1FF"}
+  }
+  browser -> sink: PULSE_SINK
+  sink -> parec -> file
+}
+
+says: What the bot says {
+  class: group
+  # Below its box: the loopback line runs through the space above it.
+  label.near: outside-bottom-center
+  direction: right
+  input: "a file or a\nlive stream" {class: node}
+  ffmpeg: ffmpeg {class: node}
+  pacat: pacat {class: node}
+  mic: "teams_mic_<id>" {class: device}
+  source: "teams_mic_src_<id>\nmodule-remap-source" {class: device}
+  browser: Chromium {class: node}
+  input -> ffmpeg -> pacat -> mic -> source
+  source -> browser: PULSE_SOURCE
+}
+
+says.mic -> hears.sink: "module-loopback\n(PLAYBACK_IN_RECORDING)" {
+  style.stroke-dash: 4
+  style.stroke: "#7A68F0"
+}

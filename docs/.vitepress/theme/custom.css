@@ -22,8 +22,39 @@
   --vp-home-hero-image-filter: blur(56px);
 }
 
-/* Once "Custom Server" is picked, vitepress-openapi lays a text input over the server dropdown,
-   and the input's own clear button lands on the dropdown's chevron, which takes the click. */
-.oa-custom-input button {
+/* Every diagram exists twice, light and dark. The file name fragment is GitHub's own convention
+   (#gh-light-mode-only / #gh-dark-mode-only), so the same markdown picks the right one there too;
+   here it follows the site's theme switch. */
+img[src*="gh-dark-mode-only"] {
   display: none;
+}
+.dark img[src*="gh-light-mode-only"] {
+  display: none;
+}
+.dark img[src*="gh-dark-mode-only"] {
+  display: block;
+}
+
+.vp-doc img[src*="/diagrams/"] {
+  margin: 24px 0;
+}
+
+/* The diagrams are wide. On a desktop they break out of the text column and use the width of the
+   page (the pages showing them have no "On this page" column), so their labels stay readable;
+   on narrow screens they scale down with the column. */
+@media (min-width: 1280px) {
+  .vp-doc img[src*="/diagrams/"] {
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: none;
+    width: min(1120px, calc(100vw - var(--vp-sidebar-width) - 96px));
+  }
+}
+
+/* Feature icons are Fluent UI System Icons drawn in currentColor, so they take the brand colour of
+   the active theme. */
+.VPFeature .icon {
+  color: var(--vp-c-brand-1);
+  background-color: var(--vp-c-brand-soft);
 }

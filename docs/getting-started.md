@@ -74,7 +74,7 @@ Someone in the meeting now sees *Recording Bot* waiting in the lobby and lets it
 curl http://localhost:8000/status/550e8400-e29b-41d4-a716-446655440000
 ```
 
-The status moves from `joining` to `lobby` to `recording`. All states are listed in the [API overview](./api.md#session-status).
+The status moves from `joining` to `lobby` to `recording`. All statuses are listed in [How a session works](./how-it-works.md#statuses).
 
 ## 4. Get the recording
 
@@ -92,4 +92,4 @@ The recording is now in `./recordings` as `<session_id>_<date>_<time>.wav`. Set 
 - [Self-hosting](./self-hosting.md): Docker Compose, and storing recordings in Azure or S3
 - [Webhooks](./webhooks.md): get told when a recording is ready instead of polling
 - [Configuration](./configuration.md): every setting
-- [API reference](./api.md): every endpoint, with a playground
+- Interactive API docs: every running instance serves them at <http://localhost:8000/docs>
