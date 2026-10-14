@@ -1,4 +1,4 @@
-# Release Drafter config for TeamsMeetingRecorder
+# Release Drafter config for TeamsRecorder
 name-template: 'v$RESOLVED_VERSION'
 
 categories:

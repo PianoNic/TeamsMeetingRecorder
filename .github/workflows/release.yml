@@ -143,9 +143,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          # Fixed names: the repository was renamed to TeamsRecorder, and deployments pull
+          # the images under their original name.
           images: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
-            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/teamsmeetingrecorder
+            ghcr.io/${{ github.repository_owner }}/teamsmeetingrecorder
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
