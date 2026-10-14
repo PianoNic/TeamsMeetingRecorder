@@ -40,6 +40,7 @@ Both formats contain exactly the same audio, bit for bit. WAV stores it as it is
 | `WEBHOOK_SECRET` | – | Sent as `X-Webhook-Secret` for the receiver to verify. Unset sends no signature |
 | `BOT_ACCESS_TOKEN` | – | Protects every endpoint except `/` and `/audio/{id}/ingest/{token}`. Requires `Authorization: Bearer <token>` or `X-API-Key`. Unset leaves the API open |
 | `ACCESS_LOG` | `true` | One log line per HTTP request. `false` keeps only the recorder's own lines, useful when something polls `/sessions` or probes `/` |
+| `STARTUP_WAIT_SECONDS` | `60` | How long the container waits at startup for PulseAudio and the virtual display. Both log how long they took; the display not coming up stops the container with the reason |
 
 ## Microphone
 
