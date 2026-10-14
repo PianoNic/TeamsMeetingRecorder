@@ -1,3 +1,8 @@
+---
+# Room for the wide diagrams, see custom.css.
+aside: false
+---
+
 # Microphone
 
 The bot can also talk: play a file, an upload or a live stream (for example text to speech) into the meeting. Recording needs no configuration; the microphone is opt-in, because it changes how the browser is launched:
@@ -16,17 +21,8 @@ Audio reaches the meeting through a second PulseAudio sink, kept apart from the 
 
 The sink's monitor is not handed to the browser directly. Chromium does not list monitor sources at all, so `getUserMedia` would find no microphone; `module-remap-source` turns the monitor into a real source that Teams lists and selects by name.
 
-```
-  what it hears
-      chromium ──PULSE_SINK──▶ teams_sink_<id> ──▶ parec ──▶ .wav / .flac
-                                      ▲
-                                      │ module-loopback   (PLAYBACK_IN_RECORDING)
-                                      │
-  what it says                        │
-      chromium ◀─PULSE_SOURCE── teams_mic_src_<id> ◀── teams_mic_<id> ◀── pacat ◀── ffmpeg
-                                (module-remap-source)                                  ▲
-                                                                          a file, or an ingest stream
-```
+![How the audio flows](./diagrams/microphone.svg#gh-light-mode-only)
+![How the audio flows](./diagrams/microphone-dark.svg#gh-dark-mode-only)
 
 Teams' noise suppression is turned off once the bot is in the call. It is built to strip everything that is not a voice, which is exactly what music looks like to it. Set `DISABLE_NOISE_SUPPRESSION=false` to leave it on.
 

@@ -20,8 +20,6 @@ pip install -r requirements.txt pytest httpx2
 python -m pytest tests/
 ```
 
-`tests/test_openapi_docs.py` fails when the published API schema no longer matches the code, see [The API reference](#the-api-reference).
-
 ## Project layout
 
 | Path | What is in it |
@@ -50,15 +48,21 @@ bun run build    # static site in docs/.vitepress/dist
 
 It is hosted as a static site: Cloudflare Pages builds it from the repository with root directory `docs`, build command `bun run build` and output directory `.vitepress/dist`.
 
-### The API reference
+### Diagrams
 
-The pages under *API reference* are generated from `docs/public/openapi.json` by [vitepress-openapi](https://github.com/enzonotario/vitepress-openapi). After changing an endpoint, refresh the file from the code:
+The diagrams are drawn with [D2](https://d2lang.com) and committed as SVG, so they look the same on this site and on GitHub. Each exists twice, light and dark; the page shows the one matching the theme. The sources are in `docs/diagrams/src`. After editing one, render both versions (the overview and microphone diagrams use the ELK layout):
 
 ```bash
-python -c "import json; from app.main import app; json.dump(app.openapi(), open('docs/public/openapi.json', 'w', encoding='utf-8'), indent=2, ensure_ascii=False)"
+cd docs/diagrams
+d2 --pad 24 --layout elk src/overview.d2 overview.svg
+d2 --pad 24 --layout elk --theme 200 src/overview-dark.d2 overview-dark.svg
+d2 --pad 24 --dagre-nodesep 30 src/lifecycle.d2 lifecycle.svg
+d2 --pad 24 --dagre-nodesep 30 --theme 200 src/lifecycle-dark.d2 lifecycle-dark.svg
+d2 --pad 24 --layout elk --elk-padding "[top=30,left=30,bottom=30,right=30]" src/microphone.d2 microphone.svg
+d2 --pad 24 --layout elk --elk-padding "[top=30,left=30,bottom=30,right=30]" --theme 200 src/microphone-dark.d2 microphone-dark.svg
 ```
 
-The test suite checks that the file matches the code, so a forgotten refresh fails the build instead of publishing an outdated reference.
+To try a change quickly, paste a source into [play.d2lang.com](https://play.d2lang.com).
 
 ## Releasing
 

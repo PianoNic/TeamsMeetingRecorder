@@ -47,10 +47,9 @@ The recording lands in `./recordings` when the meeting ends. API docs at <http:/
 **[docs.teamsrecorder.pianonic.ch](https://docs.teamsrecorder.pianonic.ch)**
 
 - [Getting started](https://docs.teamsrecorder.pianonic.ch/getting-started)
-- [How a session works](https://docs.teamsrecorder.pianonic.ch/how-it-works)
+- [How a session works](https://docs.teamsrecorder.pianonic.ch/how-it-works): the lifecycle, every status, retrying a join safely
 - [Self-hosting](https://docs.teamsrecorder.pianonic.ch/self-hosting): Docker, Docker Compose, Azure Blob and S3 storage
 - [Configuration](https://docs.teamsrecorder.pianonic.ch/configuration): every setting
-- [API](https://docs.teamsrecorder.pianonic.ch/api): endpoints, session status, retrying a join, and a reference with playground
 - [Webhooks](https://docs.teamsrecorder.pianonic.ch/webhooks): what the bot sends, and how to receive it
 - [Microphone](https://docs.teamsrecorder.pianonic.ch/microphone): playing files and live audio into a meeting
 - [Development](https://docs.teamsrecorder.pianonic.ch/development): running from source, tests, the docs site and releasing
