@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings
-from app.storage import S3Storage, get_storage
+from app.storage import S3Storage, content_type_for, get_storage
 
 
 def _configure(endpoint=None, region=None, path_style=False):
@@ -58,6 +58,13 @@ def test_removed_minio_backend_fails_loudly():
     finally:
         settings.storage_backend = "local"
         get_storage.cache_clear()
+
+
+def test_content_type_follows_the_file_not_the_setting():
+    settings.recording_format = "wav"
+    assert content_type_for("/app/recordings/s1.flac") == "audio/flac"
+    assert content_type_for("/app/recordings/s1.WAV") == "audio/wav"
+    assert content_type_for("/app/recordings/s1.bin") == "application/octet-stream"
 
 
 def test_a_leftover_removed_setting_does_not_stop_startup(tmp_path):

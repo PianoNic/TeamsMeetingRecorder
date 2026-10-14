@@ -10,6 +10,11 @@ from app.config import settings, RECORDINGS_DIR, RECORDING_CONTENT_TYPES
 logger = logging.getLogger(__name__)
 
 
+def content_type_for(path: str) -> str:
+    """The type of the file itself: a recording made under another RECORDING_FORMAT keeps its own."""
+    return RECORDING_CONTENT_TYPES.get(Path(path).suffix.lstrip(".").lower(), "application/octet-stream")
+
+
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
 
@@ -109,7 +114,7 @@ class S3Storage(StorageBackend):
                 local_path,
                 self.bucket,
                 storage_path,
-                ExtraArgs={"ContentType": RECORDING_CONTENT_TYPES[settings.recording_format]},
+                ExtraArgs={"ContentType": content_type_for(local_path)},
             )
             logger.info(f"Uploaded to S3: {storage_path}")
             return True
@@ -128,13 +133,12 @@ class AzureBlobStorage(StorageBackend):
 
     def __init__(self):
         from azure.core.exceptions import ResourceExistsError
-        from azure.storage.blob import ContentSettings, PublicAccess
+        from azure.storage.blob import PublicAccess
 
         self.container = settings.azure_storage_container
         self._public_endpoint = (settings.azure_storage_public_endpoint or "").rstrip("/")
         self._service_client = self._build_service_client()
         self._container_client = self._service_client.get_container_client(self.container)
-        self._content_settings = ContentSettings(content_type=RECORDING_CONTENT_TYPES[settings.recording_format])
 
         if settings.azure_storage_connection_string:
             try:
@@ -175,6 +179,7 @@ class AzureBlobStorage(StorageBackend):
 
     def upload_file(self, local_path: str, storage_path: str) -> bool:
         from azure.core.exceptions import AzureError
+        from azure.storage.blob import ContentSettings
 
         try:
             blob_client = self._container_client.get_blob_client(storage_path)
@@ -182,7 +187,7 @@ class AzureBlobStorage(StorageBackend):
                 blob_client.upload_blob(
                     data,
                     overwrite=True,
-                    content_settings=self._content_settings,
+                    content_settings=ContentSettings(content_type=content_type_for(local_path)),
                 )
             logger.info(f"Uploaded to Azure Blob: {self.container}/{storage_path}")
             return True
