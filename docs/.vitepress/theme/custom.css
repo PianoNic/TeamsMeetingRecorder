@@ -1,0 +1,29 @@
+/* TeamsRecorder brand colours, taken from the logo: #2E2596, #4B3FD1, #7A68F0, #B49CFF.
+   Light mode uses the deep indigo for contrast on white, dark mode the lighter violets. */
+:root {
+  --vp-c-brand-1: #4b3fd1;
+  --vp-c-brand-2: #5b4fe0;
+  --vp-c-brand-3: #4b3fd1;
+  --vp-c-brand-soft: rgba(75, 63, 209, 0.14);
+}
+
+.dark {
+  --vp-c-brand-1: #b49cff;
+  --vp-c-brand-2: #9a85f6;
+  --vp-c-brand-3: #7a68f0;
+  --vp-c-brand-soft: rgba(122, 104, 240, 0.24);
+}
+
+/* Hero title in the logo's gradient, with a soft glow behind the hero image. */
+:root {
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #4b3fd1, #7a68f0 55%, #5b8df6);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, #7a68f0 50%, #5b8df6 50%);
+  --vp-home-hero-image-filter: blur(56px);
+}
+
+/* Once "Custom Server" is picked, vitepress-openapi lays a text input over the server dropdown,
+   and the input's own clear button lands on the dropdown's chevron, which takes the click. */
+.oa-custom-input button {
+  display: none;
+}

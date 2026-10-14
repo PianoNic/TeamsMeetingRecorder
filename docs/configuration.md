@@ -1,6 +1,8 @@
 # Configuration
 
-Set these as environment variables or in a `.env` file. A value may reference another environment variable as `${NAME}`, e.g. `AZURE_STORAGE_CONTAINER=${Storage__BlobContainerName}`, to reuse a platform-managed value instead of copying it.
+Set these as environment variables or in a `.env` file next to the container. Unknown keys are ignored, so a setting left over from an older version never stops the bot from starting.
+
+A value may reference another environment variable as `${NAME}`, for example `AZURE_STORAGE_CONTAINER=${Storage__BlobContainerName}`, to reuse a value your platform already provides instead of copying it.
 
 ## Recording
 
@@ -48,7 +50,7 @@ Both formats contain exactly the same audio, bit for bit. WAV stores it as it is
 
 | Variable | Default | Description |
 |---|---|---|
-| `MIC_PLAYBACK_ENABLED` | `false` | Give the bot a microphone it can play audio through. See [Microphone](microphone.md) for why this is opt-in |
+| `MIC_PLAYBACK_ENABLED` | `false` | Give the bot a microphone it can play audio through. See [Microphone](./microphone.md) for why this is opt-in |
 | `DISABLE_NOISE_SUPPRESSION` | `true` | Turn off Teams' noise suppression after joining, so music is not treated as noise. Only with `MIC_PLAYBACK_ENABLED` |
 | `PLAYBACK_IN_RECORDING` | `true` | Include what the bot played in the saved recording, not just what it heard |
 | `MEDIA_DIR` | `/app/media` | The only directory `/audio/{id}/play` reads from. Uploads land here too |

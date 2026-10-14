@@ -1,14 +1,14 @@
 # Microphone
 
-Recording is the default and needs no configuration. Giving the bot a microphone is opt-in, because it changes how the browser is launched:
+The bot can also talk: play a file, an upload or a live stream (for example text to speech) into the meeting. Recording needs no configuration; the microphone is opt-in, because it changes how the browser is launched:
 
 ```bash
 MIC_PLAYBACK_ENABLED=true
 ```
 
-## Why it is opt-in
-
+::: details Why it is opt-in
 The recorder launches Chromium with `--use-fake-device-for-media-stream`, which supplies a fake camera *and* replaces every microphone with a generated beep. A bot using that fake microphone cannot be heard whatever it plays, so enabling playback drops the flag, and with it the fake camera. Teams then puts an "are you sure you don't want audio or video?" prompt over the prejoin screen, which the bot dismisses on this path only. With `MIC_PLAYBACK_ENABLED` off, the browser flags and the join path stay exactly as they were.
+:::
 
 ## How the audio flows
 

@@ -10,10 +10,11 @@
   <a href="https://github.com/PianoNic/TeamsRecorder"><img src="https://badgetrack.pianonic.ch/badge?tag=teams-meeting-recorder&label=visits&color=4B3FD1&style=flat" alt="visits" /></a>
   <a href="https://github.com/PianoNic/TeamsRecorder/blob/main/LICENSE"><img src="https://img.shields.io/github/license/PianoNic/TeamsRecorder?color=4B3FD1&label=License" alt="License" /></a>
   <a href="https://github.com/PianoNic/TeamsRecorder/releases"><img src="https://img.shields.io/github/v/release/PianoNic/TeamsRecorder?include_prereleases&color=4B3FD1&label=Latest%20Release" alt="Latest release" /></a>
-  <a href="docs/self-hosting.md"><img src="https://img.shields.io/badge/Selfhost-Instructions-4B3FD1.svg" alt="Self-hosting" /></a>
+  <a href="https://docs.teamsrecorder.pianonic.ch/self-hosting"><img src="https://img.shields.io/badge/Selfhost-Instructions-4B3FD1.svg" alt="Self-hosting" /></a>
+  <a href="https://docs.teamsrecorder.pianonic.ch"><img src="https://img.shields.io/badge/Docs-docs.teamsrecorder.pianonic.ch-4B3FD1.svg" alt="Documentation" /></a>
 </p>
 
-> Not affiliated with Microsoft. Get consent from everyone in the meeting before you record it, see [Legal and privacy](#legal-and-privacy).
+> Not affiliated with Microsoft. Get consent from everyone in the meeting before you record it, see [Consent and privacy](https://docs.teamsrecorder.pianonic.ch/privacy).
 
 ## Features
 
@@ -39,20 +40,24 @@ curl -X POST http://localhost:8000/join \
   -d '{"meeting_url": "https://teams.microsoft.com/l/meetup-join/...", "display_name": "Recording Bot"}'
 ```
 
-The recording lands in `./recordings` when the meeting ends. API docs at <http://localhost:8000/docs>.
+The recording lands in `./recordings` when the meeting ends. API docs at <http://localhost:8000/docs>, the full guide at **[docs.teamsrecorder.pianonic.ch](https://docs.teamsrecorder.pianonic.ch/getting-started)**.
 
 ## Documentation
 
-- [Self-hosting](docs/self-hosting.md): Docker, Docker Compose and storage backends
-- [Configuration](docs/configuration.md): environment variables
-- [API](docs/api.md): endpoints, session status and retrying a join
-- [Webhooks](docs/webhooks.md): what the bot sends when a session ends
-- [Microphone](docs/microphone.md): playing files and live audio into a meeting
-- [Development](docs/development.md): running from source and the tests
+**[docs.teamsrecorder.pianonic.ch](https://docs.teamsrecorder.pianonic.ch)**
+
+- [Getting started](https://docs.teamsrecorder.pianonic.ch/getting-started)
+- [How a session works](https://docs.teamsrecorder.pianonic.ch/how-it-works)
+- [Self-hosting](https://docs.teamsrecorder.pianonic.ch/self-hosting): Docker, Docker Compose, Azure Blob and S3 storage
+- [Configuration](https://docs.teamsrecorder.pianonic.ch/configuration): every setting
+- [API](https://docs.teamsrecorder.pianonic.ch/api): endpoints, session status, retrying a join, and a reference with playground
+- [Webhooks](https://docs.teamsrecorder.pianonic.ch/webhooks): what the bot sends, and how to receive it
+- [Microphone](https://docs.teamsrecorder.pianonic.ch/microphone): playing files and live audio into a meeting
+- [Development](https://docs.teamsrecorder.pianonic.ch/development): running from source, tests, the docs site and releasing
 
 ## Legal and privacy
 
-Recording people has rules. Get explicit consent from every participant, tell them the meeting is recorded, follow your local privacy law (GDPR, CCPA and the like), and never expose the API publicly without `BOT_ACCESS_TOKEN`.
+Recording people has rules. Get explicit consent from every participant, tell them the meeting is recorded, follow your local privacy law (GDPR, CCPA and the like), and never expose the API publicly without `BOT_ACCESS_TOKEN`. More in [Consent and privacy](https://docs.teamsrecorder.pianonic.ch/privacy).
 
 ## License
 

@@ -1,0 +1,1250 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TeamsRecorder API",
+    "description": "API for recording Microsoft Teams meetings using a bot",
+    "version": "1.4.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Root",
+        "description": "Root endpoint with API information.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Join Meeting",
+        "description": "Join a Teams meeting and start recording.\n\nWith a reference the call is idempotent: while a session with the same reference is still active, that session is returned and no second bot is sent. A caller whose first /join timed out can simply send it again.",
+        "operationId": "join_meeting_join_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinMeetingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stop/{session_id}": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Stop Recording",
+        "description": "Stop an active recording session.",
+        "operationId": "stop_recording_stop__session_id__post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status/{session_id}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Get Status",
+        "description": "Get the status of a recording session.",
+        "operationId": "get_status_status__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List Sessions",
+        "description": "List all active recording sessions.",
+        "operationId": "list_sessions_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}": {
+      "get": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Get Audio State",
+        "description": "What the bot's microphone is doing right now.",
+        "operationId": "get_audio_state_audio__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/unmute": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Unmute",
+        "description": "Unmute the bot so the meeting can hear it.",
+        "operationId": "unmute_audio__session_id__unmute_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/mute": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Mute",
+        "description": "Mute the bot again.",
+        "operationId": "mute_audio__session_id__mute_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/play": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Play File",
+        "description": "Play a file from the media directory through the bot's microphone.",
+        "operationId": "play_file_audio__session_id__play_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayFileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/play/upload": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Play Upload",
+        "description": "Upload an audio file and play it straight through the microphone.\n\nThe upload is deleted once playback ends; it is a thing to say, not a thing to keep.",
+        "operationId": "play_upload_audio__session_id__play_upload_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_play_upload_audio__session_id__play_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/stream": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Open Stream",
+        "description": "Open an ingest URL for another application to push live audio to.\n\nThe returned URL is self-contained: it carries its own secret, so it can be handed to a TTS engine or a player without also handing over the API token.",
+        "operationId": "open_stream_audio__session_id__stream_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenStreamRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Close Ingest Stream",
+        "description": "Close the ingest stream and invalidate its URL.",
+        "operationId": "close_ingest_stream_audio__session_id__stream_delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/ingest/{token}": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Ingest",
+        "description": "Receive a live audio stream and play it through the microphone.\n\nThe body is read as it arrives rather than buffered, so this stays live audio: what the pushing application sends now is what the meeting hears now. The write blocks while the sink is full, which is how backpressure reaches an application pushing faster than realtime.",
+        "operationId": "ingest_audio_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Ingest",
+        "description": "Receive a live audio stream and play it through the microphone.\n\nThe body is read as it arrives rather than buffered, so this stays live audio: what the pushing application sends now is what the meeting hears now. The write blocks while the sink is full, which is how backpressure reaches an application pushing faster than realtime.",
+        "operationId": "ingest_audio_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/{session_id}/stop": {
+      "post": {
+        "tags": [
+          "Microphone"
+        ],
+        "summary": "Stop Playback",
+        "description": "Stop whatever the bot is playing, optionally muting it again.",
+        "operationId": "stop_playback_audio__session_id__stop_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "mute_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Mute After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudioActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AudioActionResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AudioStateResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "AudioActionResponse",
+        "description": "Result of a microphone or playback action."
+      },
+      "AudioStateResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BotStatus"
+          },
+          "record": {
+            "type": "boolean",
+            "title": "Record",
+            "description": "Whether this session is recording at all"
+          },
+          "muted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted",
+            "description": "None when the Teams UI cannot be read"
+          },
+          "playing": {
+            "type": "boolean",
+            "title": "Playing",
+            "default": false
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind",
+            "description": "'file' or 'stream' while playing"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "loop": {
+            "type": "boolean",
+            "title": "Loop",
+            "default": false
+          },
+          "playback_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playback Started At"
+          },
+          "stream_open": {
+            "type": "boolean",
+            "title": "Stream Open",
+            "default": false
+          },
+          "stream_connected": {
+            "type": "boolean",
+            "title": "Stream Connected",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "status",
+          "record"
+        ],
+        "title": "AudioStateResponse",
+        "description": "What the bot's microphone is doing right now."
+      },
+      "Body_play_upload_audio__session_id__play_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Audio file to play into the meeting"
+          },
+          "loop": {
+            "type": "boolean",
+            "title": "Loop",
+            "default": false
+          },
+          "volume": {
+            "type": "number",
+            "title": "Volume",
+            "default": 1.0
+          },
+          "unmute": {
+            "type": "boolean",
+            "title": "Unmute",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_play_upload_audio__session_id__play_upload_post"
+      },
+      "BotStatus": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "joining",
+          "lobby",
+          "recording",
+          "connected",
+          "leaving",
+          "denied",
+          "not_admitted",
+          "error",
+          "stopped",
+          "interrupted"
+        ],
+        "title": "BotStatus",
+        "description": "Status of the recording bot."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JoinMeetingRequest": {
+        "properties": {
+          "meeting_url": {
+            "type": "string",
+            "title": "Meeting Url",
+            "description": "Microsoft Teams meeting URL"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference",
+            "description": "The caller's own id for this meeting. It comes back on /sessions, /status and the webhook, and a second /join with the same reference while that session is still active returns it instead of sending another bot, so a join can be retried safely."
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Display Name",
+            "description": "Display name to use in the meeting"
+          },
+          "record": {
+            "type": "boolean",
+            "title": "Record",
+            "description": "Record the meeting. Set false for a bot that only joins to play audio in - nothing is captured, saved or uploaded.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "meeting_url",
+          "display_name"
+        ],
+        "title": "JoinMeetingRequest",
+        "description": "Request model for joining a Teams meeting.",
+        "example": {
+          "display_name": "Recording Bot",
+          "meeting_url": "https://teams.microsoft.com/l/meetup-join/...",
+          "record": true
+        }
+      },
+      "OpenStreamRequest": {
+        "properties": {
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format",
+            "description": "ffmpeg input format name. Only needed for headerless audio such as 's16le'; container formats (mp3, ogg, wav) are detected from the bytes."
+          },
+          "volume": {
+            "type": "number",
+            "maximum": 4.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Volume",
+            "description": "Playback gain, 1.0 = unchanged",
+            "default": 1.0
+          },
+          "unmute": {
+            "type": "boolean",
+            "title": "Unmute",
+            "description": "Unmute the bot first, so the meeting can hear it",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OpenStreamRequest",
+        "description": "Open an ingest URL another application can push live audio to.",
+        "example": {
+          "unmute": true,
+          "volume": 1.0
+        }
+      },
+      "PlayFileRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Path to the audio file, relative to MEDIA_DIR"
+          },
+          "loop": {
+            "type": "boolean",
+            "title": "Loop",
+            "description": "Repeat until stopped",
+            "default": false
+          },
+          "volume": {
+            "type": "number",
+            "maximum": 4.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Volume",
+            "description": "Playback gain, 1.0 = unchanged",
+            "default": 1.0
+          },
+          "unmute": {
+            "type": "boolean",
+            "title": "Unmute",
+            "description": "Unmute the bot first, so the meeting can hear it",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "PlayFileRequest",
+        "description": "Play an audio file that already sits in the media directory.",
+        "example": {
+          "loop": true,
+          "path": "hold-music.mp3",
+          "unmute": true,
+          "volume": 1.0
+        }
+      },
+      "RecordingResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordingSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "RecordingResponse",
+        "description": "Response for recording operations."
+      },
+      "RecordingSession": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Unique session identifier"
+          },
+          "meeting_url": {
+            "type": "string",
+            "title": "Meeting Url"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BotStatus"
+          },
+          "record": {
+            "type": "boolean",
+            "title": "Record",
+            "default": true
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At"
+          },
+          "recording_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording File"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "meeting_url",
+          "display_name",
+          "status"
+        ],
+        "title": "RecordingSession",
+        "description": "Information about a recording session."
+      },
+      "StatusResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "meeting_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meeting Url"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BotStatus"
+          },
+          "record": {
+            "type": "boolean",
+            "title": "Record",
+            "default": true
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "recording_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Duration Seconds"
+          },
+          "recording_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording File"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "status"
+        ],
+        "title": "StatusResponse",
+        "description": "Response for status checks."
+      },
+      "StreamResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "ingest_url": {
+            "type": "string",
+            "title": "Ingest Url",
+            "description": "PUT or POST a live audio stream here"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Secret embedded in ingest_url; treat it as a credential"
+          },
+          "formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Formats",
+            "description": "Examples of what ffmpeg will decode; anything it supports works"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "ingest_url",
+          "token"
+        ],
+        "title": "StreamResponse",
+        "description": "The ingest endpoint handed back to the application that will push audio."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
