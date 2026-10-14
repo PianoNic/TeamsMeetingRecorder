@@ -5,9 +5,6 @@ from abc import ABC, abstractmethod
 from functools import lru_cache
 from pathlib import Path
 
-from minio import Minio
-from minio.error import S3Error
-
 from app.config import settings, RECORDINGS_DIR, RECORDING_CONTENT_TYPES
 
 logger = logging.getLogger(__name__)
@@ -57,59 +54,73 @@ class LocalStorage(StorageBackend):
         return storage_path
 
 
-class MinIOStorage(StorageBackend):
-    """MinIO/S3-compatible storage backend."""
+class S3Storage(StorageBackend):
+    """Any S3-compatible storage: AWS S3, Cloudflare R2, Hetzner, Wasabi, Backblaze B2, Ceph, ..."""
 
     def __init__(self):
-        """Initialize MinIO client."""
-        if not settings.minio_endpoint or not settings.minio_access_key or not settings.minio_secret_key:
-            raise ValueError(
-                "MinIO credentials not configured. Check MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY"
-            )
+        from botocore.exceptions import ClientError
 
-        self.client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-        )
-        self.bucket = settings.minio_bucket
-
+        self.bucket = settings.s3_bucket
+        self.client = self._build_client()
         try:
-            if not self.client.bucket_exists(self.bucket):
-                self.client.make_bucket(self.bucket)
-                logger.info(f"Created MinIO bucket: {self.bucket}")
-            else:
-                logger.info(f"Using existing MinIO bucket: {self.bucket}")
-        except S3Error as e:
-            logger.error(f"Failed to initialize MinIO bucket: {e}")
-            raise
+            self.client.head_bucket(Bucket=self.bucket)
+            logger.info(f"Using existing S3 bucket: {self.bucket}")
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in ("404", "NoSuchBucket"):
+                logger.error(f"Cannot reach S3 bucket {self.bucket}: {e}")
+                raise
+            # Created only when it is missing; keys scoped to one bucket usually
+            # may not create buckets, so an existing one is the normal case.
+            create = {"Bucket": self.bucket}
+            if settings.s3_region and settings.s3_region != "us-east-1" and not settings.s3_endpoint_url:
+                create["CreateBucketConfiguration"] = {"LocationConstraint": settings.s3_region}
+            self.client.create_bucket(**create)
+            logger.info(f"Created S3 bucket: {self.bucket}")
+
+    @staticmethod
+    def _build_client():
+        import boto3
+        from botocore.config import Config
+
+        return boto3.client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url or None,
+            region_name=settings.s3_region or None,
+            # None lets boto3 use its default credential chain.
+            aws_access_key_id=settings.s3_access_key_id or None,
+            aws_secret_access_key=settings.s3_secret_access_key or None,
+            config=Config(s3={"addressing_style": "path" if settings.s3_force_path_style else "auto"}),
+        )
 
     def uses_remote_storage(self) -> bool:
         return True
 
     def get_file_path(self, session_id: str, filename: str) -> str:
-        """Get the MinIO object key (path in bucket)."""
+        """Get the object key (path in bucket)."""
         return f"{session_id}/{filename}"
 
     def upload_file(self, local_path: str, storage_path: str) -> bool:
-        """Upload a file to MinIO."""
+        """Upload a file; large files go up in parts automatically."""
+        from boto3.exceptions import S3UploadFailedError
+        from botocore.exceptions import BotoCoreError, ClientError
+
         try:
-            self.client.fput_object(
-                bucket_name=self.bucket,
-                object_name=storage_path,
-                file_path=local_path,
-                content_type=RECORDING_CONTENT_TYPES[settings.recording_format],
+            self.client.upload_file(
+                local_path,
+                self.bucket,
+                storage_path,
+                ExtraArgs={"ContentType": RECORDING_CONTENT_TYPES[settings.recording_format]},
             )
-            logger.info(f"Uploaded to MinIO: {storage_path}")
+            logger.info(f"Uploaded to S3: {storage_path}")
             return True
-        except S3Error as e:
-            logger.error(f"Failed to upload to MinIO {storage_path}: {e}")
+        except (BotoCoreError, ClientError, S3UploadFailedError) as e:
+            logger.error(f"Failed to upload to S3 {storage_path}: {e}")
             return False
 
     def get_webhook_file_location(self, storage_path: str) -> str:
-        protocol = "https" if settings.minio_secure else "http"
-        return f"{protocol}://{settings.minio_endpoint}/{self.bucket}/{storage_path}"
+        if settings.s3_public_endpoint:
+            return f"{settings.s3_public_endpoint.rstrip('/')}/{storage_path}"
+        return f"{self.bucket}/{storage_path}"
 
 
 class AzureBlobStorage(StorageBackend):
@@ -192,13 +203,17 @@ def get_storage() -> StorageBackend:
 
     Built lazily and cached: the remote backends do network I/O in __init__
     (bucket/container creation), so constructing this at import time would make
-    a misconfigured MinIO or Azure break the whole app's import rather than just
+    a misconfigured S3 or Azure break the whole app's import rather than just
     the recordings that need it.
     """
     backend = settings.storage_backend.lower()
+    if backend == "s3":
+        logger.info("Using S3 storage backend")
+        return S3Storage()
     if backend == "minio":
-        logger.info("Using MinIO storage backend")
-        return MinIOStorage()
+        # Removed in favour of the generic S3 backend; falling back to local would
+        # silently keep recordings inside the container.
+        raise ValueError("STORAGE_BACKEND=minio was replaced by STORAGE_BACKEND=s3, see docs/configuration.md")
     if backend in ("azure", "blob"):
         logger.info("Using Azure Blob storage backend")
         return AzureBlobStorage()

@@ -93,15 +93,23 @@ class Settings(BaseSettings):
     # application. Unset means "use the URL the request came in on".
     public_base_url: Optional[str] = None
 
-    # Storage backend: 'local', 'minio', or 'azure'
+    # Storage backend: 'local', 's3', or 'azure'
     storage_backend: str = "local"
 
-    # MinIO settings (only used when storage_backend='minio')
-    minio_endpoint: Optional[str] = None
-    minio_access_key: Optional[str] = None
-    minio_secret_key: Optional[str] = None
-    minio_bucket: str = "recordings"
-    minio_secure: bool = True
+    # S3 settings (only used when storage_backend='s3'). Any S3-compatible
+    # provider: unset endpoint means AWS, otherwise e.g. Cloudflare R2, Hetzner,
+    # Wasabi, Backblaze B2, Ceph or a self-hosted server.
+    s3_bucket: str = "recordings"
+    s3_endpoint_url: Optional[str] = None
+    s3_region: Optional[str] = None
+    # Unset keys fall back to the default AWS credential chain (instance role,
+    # AWS_* variables, shared config).
+    s3_access_key_id: Optional[str] = None
+    s3_secret_access_key: Optional[str] = None
+    # Bucket in the path instead of the host name; most self-hosted servers need it.
+    s3_force_path_style: bool = False
+    # Optional public base for webhook file_location URLs, e.g. https://cdn.example.com/recordings
+    s3_public_endpoint: Optional[str] = None
 
     # Azure Blob settings (only used when storage_backend='azure')
     azure_storage_connection_string: Optional[str] = None
@@ -114,7 +122,7 @@ class Settings(BaseSettings):
     azure_storage_public_endpoint: Optional[str] = None
 
     # Webhook settings (optional)
-    # Called when a recording finishes saving (both local and MinIO)
+    # Called when a recording finishes saving (any storage backend)
     webhook_url: Optional[str] = None
 
     # Also send a webhook for every status change while a session runs
@@ -156,7 +164,10 @@ class Settings(BaseSettings):
             value = re.sub(r"\$\{([^}]+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), value)
         return value
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Unknown keys in .env are ignored like unknown environment variables already
+    # are: a setting that was removed (MINIO_*, DEBUG_SCREENSHOTS) used to stop the
+    # app from starting for everyone whose .env still had it.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()
