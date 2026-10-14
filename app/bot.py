@@ -357,7 +357,8 @@ class TeamsBot:
 
     async def _join_meeting(self):
         """Join the Teams meeting."""
-        logger.info(f"Joining: {self.meeting_url}")
+        # Not the link itself: it carries the tenant id and the organizer's account id.
+        logger.info(f"Joining meeting for session {self.session_id}")
         await self.page.goto(self.meeting_url, wait_until="domcontentloaded")
 
         # # Check for App Opening
