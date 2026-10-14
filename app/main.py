@@ -130,6 +130,28 @@ app = FastAPI(
 )
 
 
+_build_openapi = app.openapi
+
+
+def _openapi_with_flowing_text():
+    """The schema, with the endpoint docstrings' hard line wraps joined into flowing paragraphs.
+
+    Docstrings are wrapped for the source code; Swagger and the docs site would otherwise show
+    every wrap as a line break in the middle of a sentence.
+    """
+    if app.openapi_schema is None:
+        schema = _build_openapi()
+        for operations in schema.get("paths", {}).values():
+            for operation in operations.values():
+                if operation.get("description"):
+                    operation["description"] = re.sub(r"(?<=\S)\n(?=\S)", " ", operation["description"])
+        app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _openapi_with_flowing_text
+
+
 # Paths reachable without the access token. "/" is the container health probe.
 _OPEN_PATHS = {"/"}
 
@@ -169,7 +191,7 @@ async def access_token_guard(request: Request, call_next):
     return await call_next(request)
 
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 async def root():
     """Root endpoint with API information."""
     return {
@@ -180,7 +202,7 @@ async def root():
     }
 
 
-@app.post("/join", response_model=RecordingResponse)
+@app.post("/join", tags=["Sessions"], response_model=RecordingResponse)
 async def join_meeting(request: JoinMeetingRequest):
     """Join a Teams meeting and start recording.
 
@@ -253,7 +275,7 @@ def _session_of(bot: TeamsBot, status: Optional[BotStatus] = None) -> RecordingS
     )
 
 
-@app.post("/stop/{session_id}", response_model=RecordingResponse)
+@app.post("/stop/{session_id}", tags=["Sessions"], response_model=RecordingResponse)
 async def stop_recording(session_id: str):
     """Stop an active recording session."""
     bot = active_sessions.get(session_id)
@@ -270,7 +292,7 @@ async def stop_recording(session_id: str):
     )
 
 
-@app.get("/status/{session_id}", response_model=StatusResponse)
+@app.get("/status/{session_id}", tags=["Sessions"], response_model=StatusResponse)
 async def get_status(session_id: str):
     """Get the status of a recording session."""
     bot = _lookup_session(session_id)
@@ -290,7 +312,7 @@ async def get_status(session_id: str):
     )
 
 
-@app.get("/sessions")
+@app.get("/sessions", tags=["Sessions"])
 async def list_sessions():
     """List all active recording sessions."""
     return [{
@@ -355,7 +377,7 @@ async def _unmute_for_playback(bot: TeamsBot) -> Optional[str]:
         return f"could not unmute automatically ({e})"
 
 
-@app.get("/audio/{session_id}", response_model=AudioStateResponse)
+@app.get("/audio/{session_id}", tags=["Microphone"], response_model=AudioStateResponse)
 async def get_audio_state(session_id: str):
     """What the bot's microphone is doing right now."""
     bot = _lookup_session(session_id)
@@ -364,7 +386,7 @@ async def get_audio_state(session_id: str):
     return await _state(bot)
 
 
-@app.post("/audio/{session_id}/unmute", response_model=AudioActionResponse)
+@app.post("/audio/{session_id}/unmute", tags=["Microphone"], response_model=AudioActionResponse)
 async def unmute(session_id: str):
     """Unmute the bot so the meeting can hear it."""
     bot = _require_live_session(session_id)
@@ -375,7 +397,7 @@ async def unmute(session_id: str):
     return AudioActionResponse(success=True, message="Microphone unmuted", state=await _state(bot))
 
 
-@app.post("/audio/{session_id}/mute", response_model=AudioActionResponse)
+@app.post("/audio/{session_id}/mute", tags=["Microphone"], response_model=AudioActionResponse)
 async def mute(session_id: str):
     """Mute the bot again."""
     bot = _require_live_session(session_id)
@@ -386,7 +408,7 @@ async def mute(session_id: str):
     return AudioActionResponse(success=True, message="Microphone muted", state=await _state(bot))
 
 
-@app.post("/audio/{session_id}/play", response_model=AudioActionResponse)
+@app.post("/audio/{session_id}/play", tags=["Microphone"], response_model=AudioActionResponse)
 async def play_file(session_id: str, request: PlayFileRequest):
     """Play a file from the media directory through the bot's microphone."""
     bot, player = _require_player(session_id)
@@ -411,7 +433,7 @@ async def play_file(session_id: str, request: PlayFileRequest):
     return AudioActionResponse(success=True, message=message, state=await _state(bot))
 
 
-@app.post("/audio/{session_id}/play/upload", response_model=AudioActionResponse)
+@app.post("/audio/{session_id}/play/upload", tags=["Microphone"], response_model=AudioActionResponse)
 async def play_upload(
     session_id: str,
     file: UploadFile = File(..., description="Audio file to play into the meeting"),
@@ -469,7 +491,7 @@ async def play_upload(
     return AudioActionResponse(success=True, message=message, state=await _state(bot))
 
 
-@app.post("/audio/{session_id}/stream", response_model=StreamResponse)
+@app.post("/audio/{session_id}/stream", tags=["Microphone"], response_model=StreamResponse)
 async def open_stream(session_id: str, request: OpenStreamRequest, http_request: Request):
     """Open an ingest URL for another application to push live audio to.
 
@@ -498,8 +520,8 @@ async def open_stream(session_id: str, request: OpenStreamRequest, http_request:
 
 # One function for both methods, each with its own operation id: a shared one
 # makes the OpenAPI document invalid for client generators.
-@app.put("/audio/{session_id}/ingest/{token}", operation_id="ingest_audio_put")
-@app.post("/audio/{session_id}/ingest/{token}", operation_id="ingest_audio_post")
+@app.put("/audio/{session_id}/ingest/{token}", tags=["Microphone"], operation_id="ingest_audio_put")
+@app.post("/audio/{session_id}/ingest/{token}", tags=["Microphone"], operation_id="ingest_audio_post")
 async def ingest(session_id: str, token: str, request: Request):
     """Receive a live audio stream and play it through the microphone.
 
@@ -531,7 +553,7 @@ async def ingest(session_id: str, token: str, request: Request):
     return {"success": True, "bytes_received": received, "message": "Stream ended"}
 
 
-@app.delete("/audio/{session_id}/stream", response_model=AudioActionResponse)
+@app.delete("/audio/{session_id}/stream", tags=["Microphone"], response_model=AudioActionResponse)
 async def close_ingest_stream(session_id: str):
     """Close the ingest stream and invalidate its URL."""
     bot, player = _require_player(session_id)
@@ -543,7 +565,7 @@ async def close_ingest_stream(session_id: str):
     )
 
 
-@app.post("/audio/{session_id}/stop", response_model=AudioActionResponse)
+@app.post("/audio/{session_id}/stop", tags=["Microphone"], response_model=AudioActionResponse)
 async def stop_playback(session_id: str, mute_after: bool = False):
     """Stop whatever the bot is playing, optionally muting it again."""
     bot, player = _require_player(session_id)

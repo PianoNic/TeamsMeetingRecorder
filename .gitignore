@@ -67,3 +67,8 @@ htmlcov/
 .claude/
 # Playwright MCP session artifacts
 .playwright-mcp/
+
+# VitePress docs
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
